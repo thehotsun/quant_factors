@@ -1,0 +1,369 @@
+# 因子参数配置
+# 每个因子可在此覆盖默认参数，支持热更新
+
+factors:
+  pork_etf:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  soybean_meal:
+    adaptive: true
+    params:
+      change_threshold: 0.04
+      zscore_window: 20
+
+  corn:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+
+  soybean:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+
+  rapeseed_meal:
+    adaptive: true
+    params:
+      substitution_ratio: 1.3
+
+  pig_grain_ratio:
+    adaptive: true
+    params:
+      warning_level1: 5.0
+      warning_level2: 5.5
+      normal_high: 9.0
+
+  feed_cost:
+    adaptive: true
+    params:
+      corn_weight: 0.60
+      soybean_meal_weight: 0.25
+      rapeseed_meal_weight: 0.10
+
+  crush_margin:
+    adaptive: false
+    params:
+      oil_yield: 0.18
+      meal_yield: 0.78
+      processing_cost: 150
+
+  pig_chicken_spread:
+    adaptive: true
+    params:
+      substitution_threshold: 2.5
+      reverse_threshold: 1.5
+
+  egg_feed_ratio:
+    adaptive: true
+    params:
+      loss_threshold: 2.5
+      profit_threshold: 3.5
+
+  cpi:
+    adaptive: false
+    params:
+      high_threshold: 3.0
+      deflation_threshold: 0.0
+
+  pmi:
+    adaptive: false
+    params:
+      contraction_threshold: 49.0
+      expansion_threshold: 51.0
+
+  forex:
+    adaptive: true
+    params:
+      depreciation_threshold: 0.005
+      zscore_window: 20
+
+  money_supply:
+    adaptive: false
+    params:
+      surge_threshold: 12.0
+      tight_threshold: 8.0
+
+  crude_oil:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  natural_gas:
+    adaptive: true
+    params:
+      change_threshold: 0.05
+
+  oil_gas_ratio:
+    adaptive: false
+    params:
+      high_ratio: 30.0
+
+  copper:
+    adaptive: true
+    params:
+      change_threshold: 0.02
+      zscore_window: 20
+
+  aluminum:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+
+  rebar:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+
+  gold:
+    adaptive: true
+    params:
+      change_threshold: 0.02
+
+  silver:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      gold_beta: 1.2
+
+  cpi_gold:
+    adaptive: false
+    params:
+      cpi_surprise_threshold: 0.3
+
+  oil_assets:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  social_financing:
+    adaptive: false
+    params:
+      strong_growth: 12.0
+      weak_growth: 8.0
+
+  cbot_soybean:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  vix:
+    adaptive: false
+    params:
+      panic_threshold: 30
+      extreme_threshold: 35
+      complacency_threshold: 12
+
+  iron_ore:
+    adaptive: true
+    params:
+      change_threshold: 0.05
+      steel_loss_threshold: -200
+      steel_profit_threshold: 500
+
+  copper_gold_ratio:
+    adaptive: true
+    params:
+      extreme_low_percentile: 10
+      extreme_high_percentile: 90
+
+  oil_gold_link:
+    adaptive: true
+    params:
+      oil_surge_threshold: 0.10
+      oil_crash_threshold: -0.15
+      corr_threshold: 0.5
+
+  forex_commodity:
+    adaptive: true
+    params:
+      depreciation_threshold: 0.01
+      severe_depreciation: 0.02
+
+  pmi_metals:
+    adaptive: false
+    params:
+      expansion_threshold: 51
+      contraction_threshold: 49
+
+  iron_rebar_cost:
+    adaptive: true
+    params:
+      ratio_zscore_threshold: 2.0
+      divergence_threshold: 0.03
+
+  momentum:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      signal_threshold: 0.5
+
+  momentum_copper:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      signal_threshold: 0.5
+
+  momentum_crude:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      signal_threshold: 0.5
+
+  momentum_gold:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      signal_threshold: 0.5
+
+  momentum_rebar:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      signal_threshold: 0.5
+
+  volatility:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      high_vol_threshold: 1.5
+      low_vol_threshold: 0.5
+      high_vol_confidence: 0.50
+      low_vol_confidence: 0.45
+
+  volatility_copper:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      high_vol_threshold: 1.5
+      low_vol_threshold: 0.5
+      high_vol_confidence: 0.50
+      low_vol_confidence: 0.45
+
+  volatility_crude:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      high_vol_threshold: 1.5
+      low_vol_threshold: 0.5
+      high_vol_confidence: 0.50
+      low_vol_confidence: 0.45
+
+  volatility_gold:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      high_vol_threshold: 1.5
+      low_vol_threshold: 0.5
+      high_vol_confidence: 0.50
+      low_vol_confidence: 0.45
+
+  volatility_rebar:
+    adaptive: true
+    params:
+      short_window: 5
+      mid_window: 20
+      long_window: 60
+      high_vol_threshold: 1.5
+      low_vol_threshold: 0.5
+      high_vol_confidence: 0.50
+      low_vol_confidence: 0.45
+
+  term_structure:
+    adaptive: true
+    params:
+      extreme_percentile: 10
+
+  seasonality:
+    adaptive: false
+    params:
+      min_years: 3
+      strong_bullish_return: 0.01
+      strong_bearish_return: -0.01
+      win_rate_threshold: 0.6
+
+  seasonality_copper:
+    adaptive: false
+    params:
+      min_years: 3
+      strong_bullish_return: 0.01
+      strong_bearish_return: -0.01
+      win_rate_threshold: 0.6
+
+  seasonality_crude:
+    adaptive: false
+    params:
+      min_years: 3
+      strong_bullish_return: 0.01
+      strong_bearish_return: -0.01
+      win_rate_threshold: 0.6
+
+  seasonality_gold:
+    adaptive: false
+    params:
+      min_years: 3
+      strong_bullish_return: 0.01
+      strong_bearish_return: -0.01
+      win_rate_threshold: 0.6
+
+  seasonality_rebar:
+    adaptive: false
+    params:
+      min_years: 3
+      strong_bullish_return: 0.01
+      strong_bearish_return: -0.01
+      win_rate_threshold: 0.6
+
+# 信号聚合配置
+aggregation:
+  default_method: "weighted"
+  min_confidence: 0.40
+  conflict_resolution: "strongest"
+
+# 相关性去重分组（信号聚合时对同组信号降权）
+correlation_groups:
+  corn_feed:
+    members: ["corn_surge", "feed_cost_high", "feed_cost_surge"]
+    description: "玉米→饲料成本：玉米涨→饲料成本涨，信号高度重叠"
+  soybean_meal:
+    members: ["soybean_meal_surge", "feed_cost_high", "cbot_soybean_surge"]
+    description: "豆粕→饲料成本：豆粕涨→饲料成本涨，CBOT大豆涨→豆粕涨"
+  pork_cycle:
+    members: ["pork_cycle_bottom", "pig_grain_level1", "pig_grain_level2"]
+    description: "猪周期底部：猪价低→猪粮比低→收储预期，信号重叠"
+  iron_steel:
+    members: ["iron_ore_surge", "iron_ore_high_zscore", "steel_loss_cut", "iron_rebar_cost_push", "iron_lead_rebar"]
+    description: "铁矿石→螺纹钢：铁矿涨→成本推升→螺纹钢涨，信号重叠"
+  gold_drivers:
+    members: ["gold_tips_low", "gold_rmb_depreciation", "gold_oil_inflation", "gold_vix_high"]
+    description: "黄金多驱动：实际利率/汇率/通胀/恐慌可能同时触发"
+
+# 回测配置
+backtest:
+  default_holding_days: 10
+  default_stop_loss: -0.03
+  commission_rate: 0.0003
+  slippage: 0.001

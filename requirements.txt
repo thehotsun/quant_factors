@@ -1,0 +1,10 @@
+flask
+waitress
+pandas
+numpy
+akshare
+pyarrow
+scikit-learn
+pyyaml
+scipy
+apscheduler

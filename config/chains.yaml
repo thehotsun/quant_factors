@@ -1,0 +1,557 @@
+# 影响链条配置
+# 每个链条定义：因子模块、标的资产、触发规则、参数
+
+chains:
+  # ==================== 原有链条 ====================
+  pork_etf:
+    category: "meat"
+    description: "生猪期货价格异动 → 养殖ETF套利"
+    factor_module: "factors.meat.pork"
+    factor_class: "PorkFactor"
+    asset: "养殖ETF(159865)"
+    data_deps:
+      - pork_futures
+
+  cpi_gold:
+    category: "macro"
+    description: "美国CPI偏离预期 → 黄金ETF"
+    factor_module: "factors.macro.cpi_gold"
+    factor_class: "CpiGoldFactor"
+    asset: "黄金ETF(518880)"
+    data_deps:
+      - us_cpi
+
+  oil_assets:
+    category: "energy"
+    description: "布伦特原油异动 → 中国石油"
+    factor_module: "factors.energy.oil_assets"
+    factor_class: "OilAssetsFactor"
+    asset: "中国石油(601857)"
+    data_deps:
+      - brent_oil
+
+  # ==================== 饲料因子 ====================
+  soybean_meal:
+    category: "feed"
+    description: "豆粕期货异动 → 饲料成本传导"
+    factor_module: "factors.feed.soybean_meal"
+    factor_class: "SoybeanMealFactor"
+    asset: "豆粕期货(M)"
+    data_deps:
+      - soybean_meal_futures
+
+  corn:
+    category: "feed"
+    description: "玉米期货异动 + 饲料成本传导 → 养殖信号"
+    factor_module: "factors.feed.corn"
+    factor_class: "CornFactor"
+    asset: "玉米期货(C)"
+    data_deps:
+      - corn_futures
+
+  soybean:
+    category: "feed"
+    description: "进口大豆 + 国产大豆 + CBOT联动"
+    factor_module: "factors.feed.soybean"
+    factor_class: "SoybeanFactor"
+    asset: "大豆期货(A/B)"
+    data_deps:
+      - soybean_domestic_futures
+      - soybean_import_futures
+      - cbot_soybean
+      - usd_cny
+
+  rapeseed_meal:
+    category: "feed"
+    description: "菜粕期货 + 豆菜粕价差替代"
+    factor_module: "factors.feed.rapeseed_meal"
+    factor_class: "RapeseedMealFactor"
+    asset: "菜粕期货(RM)"
+    data_deps:
+      - rapeseed_meal_futures
+      - soybean_meal_futures
+
+  # ==================== 跨品种联动 ====================
+  pig_grain_ratio:
+    category: "cross"
+    description: "猪粮比 → 收储/抛储预期 → 生猪信号"
+    factor_module: "factors.cross.pig_grain_ratio"
+    factor_class: "PigGrainRatio"
+    asset: "生猪期货(LH)"
+    data_deps:
+      - pork_futures
+      - corn_futures
+
+  feed_cost:
+    category: "cross"
+    description: "饲料成本指数(玉米+豆粕+菜粕) → 养殖利润"
+    factor_module: "factors.cross.feed_cost"
+    factor_class: "FeedCostIndex"
+    asset: "养殖ETF(159865)"
+    data_deps:
+      - corn_futures
+      - soybean_meal_futures
+      - rapeseed_meal_futures
+
+  crush_margin:
+    category: "cross"
+    description: "大豆压榨利润 → 豆粕供应预期"
+    factor_module: "factors.cross.crush_margin"
+    factor_class: "CrushMargin"
+    asset: "豆粕期货(M)"
+    data_deps:
+      - soybean_oil_futures
+      - soybean_meal_futures
+      - soybean_import_futures
+
+  pig_chicken_spread:
+    category: "cross"
+    description: "猪鸡价差 → 替代效应 → 鸡肉信号"
+    factor_module: "factors.cross.pig_chicken_spread"
+    factor_class: "PigChickenSpread"
+    asset: "鸡肉概念(温氏/圣农/益生)"
+    data_deps:
+      - pork_futures
+      - chicken_spot
+
+  egg_feed_ratio:
+    category: "cross"
+    description: "蛋料比 → 养殖利润 → 鸡蛋信号"
+    factor_module: "factors.cross.egg_feed_ratio"
+    factor_class: "EggFeedRatio"
+    asset: "鸡蛋期货(JD)"
+    data_deps:
+      - egg_futures
+      - corn_futures
+      - soybean_meal_futures
+
+  # ==================== 宏观因子 ====================
+  cpi:
+    category: "macro"
+    description: "CPI超预期 → 消费板块信号"
+    factor_module: "factors.macro.cpi"
+    factor_class: "CPIFactor"
+    asset: "消费ETF(159928)"
+    data_deps:
+      - cpi
+
+  pmi:
+    category: "macro"
+    description: "PMI超预期 → 顺周期板块信号"
+    factor_module: "factors.macro.pmi"
+    factor_class: "PMIFactor"
+    asset: "沪深300ETF(510300)"
+    data_deps:
+      - pmi
+
+  forex:
+    category: "macro"
+    description: "人民币汇率异动 → 进出口相关板块信号"
+    factor_module: "factors.macro.forex"
+    factor_class: "ForexFactor"
+    asset: "沪深300ETF(510300)"
+    data_deps:
+      - usd_cny
+
+  money_supply:
+    category: "macro"
+    description: "M2增速 → 流动性环境 → 权益市场信号"
+    factor_module: "factors.macro.money_supply"
+    factor_class: "MoneySupplyFactor"
+    asset: "沪深300ETF(510300)"
+    data_deps:
+      - m2
+
+  social_financing:
+    category: "macro"
+    description: "社融增速+M2-社融剪刀差 → A股流动性领先指标"
+    factor_module: "factors.macro.social_financing"
+    factor_class: "SocialFinancingFactor"
+    asset: "沪深300(IF)"
+    data_deps:
+      - social_financing
+      - m2
+
+  cbot_soybean:
+    category: "macro"
+    description: "CBOT大豆：全球大豆定价锚→进口成本→豆粕/饲料传导"
+    factor_module: "factors.macro.cbot"
+    factor_class: "CbotSoybeanFactor"
+    asset: "豆粕期货(M)"
+    data_deps:
+      - cbot_soybean
+      - usd_cny
+
+  vix:
+    category: "macro"
+    description: "VIX恐慌指数：市场风险偏好→风险资产/避险资产轮动"
+    factor_module: "factors.macro.vix"
+    factor_class: "VixFactor"
+    asset: "黄金期货(AU)"
+    data_deps:
+      - vix
+      - crude_oil_futures
+
+  # ==================== 能源因子 ====================
+  crude_oil:
+    category: "energy"
+    description: "原油期货异动 + EIA库存 → 能化板块信号"
+    factor_module: "factors.energy.energy"
+    factor_class: "CrudeOilFactor"
+    asset: "原油期货(SC)"
+    data_deps:
+      - crude_oil_futures
+      - eia_crude_stock
+
+  natural_gas:
+    category: "energy"
+    description: "天然气期货异动 → 能源板块信号"
+    factor_module: "factors.energy.energy"
+    factor_class: "NaturalGasFactor"
+    asset: "天然气期货"
+    data_deps:
+      - natural_gas_futures
+
+  oil_gas_ratio:
+    category: "energy"
+    description: "油气比 → 能源替代信号"
+    factor_module: "factors.energy.energy"
+    factor_class: "OilGasRatio"
+    asset: "原油期货(SC)"
+    data_deps:
+      - crude_oil_futures
+      - natural_gas_futures
+
+  # ==================== 金属因子 ====================
+  copper:
+    category: "metals"
+    description: "铜：工业消耗品，监测 PMI 方向 + 库存 + 期限结构"
+    factor_module: "factors.metals.metals"
+    factor_class: "CopperFactor"
+    asset: "铜期货(CU)"
+    data_deps:
+      - copper_futures
+      - pmi
+
+  aluminum:
+    category: "metals"
+    description: "铝：能源密集型工业金属，监测电力成本 + 减产"
+    factor_module: "factors.metals.metals"
+    factor_class: "AluminumFactor"
+    asset: "铝期货(AL)"
+    data_deps:
+      - aluminum_futures
+      - thermal_coal_futures
+
+  rebar:
+    category: "metals"
+    description: "螺纹钢：建筑/基建材料，监测季节性 + 库存周期"
+    factor_module: "factors.metals.metals"
+    factor_class: "RebarFactor"
+    asset: "螺纹钢期货(RB)"
+    data_deps:
+      - rebar_futures
+
+  gold:
+    category: "metals"
+    description: "黄金：避险资产/货币替代，监测美元 + 实际利率 + 通胀预期"
+    factor_module: "factors.metals.metals"
+    factor_class: "GoldFactor"
+    asset: "黄金期货(AU)"
+    data_deps:
+      - gold_futures
+      - usd_cny
+      - crude_oil_futures
+      - tips_yield
+
+  silver:
+    category: "metals"
+    description: "白银：工业+贵金属双属性，监测金银比 + 光伏需求 + 工业PMI"
+    factor_module: "factors.metals.silver"
+    factor_class: "SilverFactor"
+    asset: "白银期货(AG)"
+    data_deps:
+      - silver_futures
+      - gold_futures
+      - pmi
+
+  iron_ore:
+    category: "metals"
+    description: "铁矿石：螺纹钢成本核心驱动（占成本50%+）"
+    factor_module: "factors.metals.iron_ore"
+    factor_class: "IronOreFactor"
+    asset: "螺纹钢期货(RB)"
+    data_deps:
+      - iron_ore_futures
+      - rebar_futures
+
+  # ==================== 跨体系联动 ====================
+  copper_gold_ratio:
+    category: "cross/system"
+    description: "铜金比 → 风险偏好指标 → 权益/商品信号"
+    factor_module: "factors.cross.copper_gold_ratio"
+    factor_class: "CopperGoldRatio"
+    asset: "沪深300ETF(510300)"
+    data_deps:
+      - copper_futures
+      - gold_futures
+
+  oil_gold_link:
+    category: "cross/system"
+    description: "原油→通胀预期→黄金：油价上涨推升通胀→黄金避险/抗通胀需求"
+    factor_module: "factors.cross.oil_gold_link"
+    factor_class: "OilGoldLink"
+    asset: "黄金期货(AU)"
+    data_deps:
+      - crude_oil_futures
+      - gold_futures
+
+  forex_commodity:
+    category: "cross/system"
+    description: "人民币汇率→进口商品成本：贬值推升进口大豆/铜/原油成本"
+    factor_module: "factors.cross.forex_commodity"
+    factor_class: "ForexCommodityLink"
+    asset: "豆粕期货(M)"
+    data_deps:
+      - usd_cny
+      - soybean_import_futures
+      - copper_futures
+      - crude_oil_futures
+
+  pmi_metals:
+    category: "cross/system"
+    description: "PMI→工业金属需求：PMI是铜/铝需求的领先指标"
+    factor_module: "factors.cross.pmi_metals"
+    factor_class: "PMIMetalsLink"
+    asset: "铜期货(CU)"
+    data_deps:
+      - pmi
+      - copper_futures
+      - aluminum_futures
+
+  iron_rebar_cost:
+    category: "cross/system"
+    description: "铁矿石→螺纹钢成本传导：铁矿涨→螺纹成本推升→钢厂挺价"
+    factor_module: "factors.cross.iron_rebar_cost"
+    factor_class: "IronRebarCostLink"
+    asset: "螺纹钢期货(RB)"
+    data_deps:
+      - iron_ore_futures
+      - rebar_futures
+
+  # ==================== 综合链条（多因子联动） ====================
+  full_meat_chain:
+    category: "composite"
+    description: "完整肉蛋粮产业链综合分析"
+    sub_chains:
+      - pig_grain_ratio
+      - feed_cost
+      - crush_margin
+      - pig_chicken_spread
+      - egg_feed_ratio
+      - pork_etf
+      - soybean_meal
+      - corn
+      - soybean
+      - cbot_soybean
+
+  energy_chain:
+    category: "composite"
+    description: "能源体系综合分析（含跨体系联动）"
+    sub_chains:
+      - crude_oil
+      - natural_gas
+      - oil_gas_ratio
+      - oil_gold_link
+      - forex_commodity
+
+  metals_chain:
+    category: "composite"
+    description: "金属体系综合分析（含跨体系联动）"
+    sub_chains:
+      - copper
+      - aluminum
+      - rebar
+      - gold
+      - silver
+      - iron_ore
+      - copper_gold_ratio
+      - pmi_metals
+      - iron_rebar_cost
+
+  macro_chain:
+    category: "composite"
+    description: "宏观因子综合分析（含跨体系联动）"
+    sub_chains:
+      - cpi
+      - pmi
+      - forex
+      - money_supply
+      - social_financing
+      - vix
+      - copper_gold_ratio
+      - oil_gold_link
+      - forex_commodity
+      - pmi_metals
+
+  momentum:
+    category: "technical"
+    description: "多周期动量因子：监测价格趋势强度与方向"
+    factor_module: "factors.technical.momentum"
+    factor_class: "MomentumFactor"
+    asset: "通用（通过symbol参数指定品种）"
+    symbol: "pork_futures"
+    data_deps:
+      - pork_futures
+
+  momentum_copper:
+    category: "technical"
+    description: "铜期货多周期动量因子"
+    factor_module: "factors.technical.momentum"
+    factor_class: "MomentumFactor"
+    asset: "铜期货(CU)"
+    symbol: "copper_futures"
+    data_deps:
+      - copper_futures
+
+  momentum_crude:
+    category: "technical"
+    description: "原油期货多周期动量因子"
+    factor_module: "factors.technical.momentum"
+    factor_class: "MomentumFactor"
+    asset: "原油期货(SC)"
+    symbol: "crude_oil_futures"
+    data_deps:
+      - crude_oil_futures
+
+  momentum_gold:
+    category: "technical"
+    description: "黄金期货多周期动量因子"
+    factor_module: "factors.technical.momentum"
+    factor_class: "MomentumFactor"
+    asset: "黄金期货(AU)"
+    symbol: "gold_futures"
+    data_deps:
+      - gold_futures
+
+  momentum_rebar:
+    category: "technical"
+    description: "螺纹钢期货多周期动量因子"
+    factor_module: "factors.technical.momentum"
+    factor_class: "MomentumFactor"
+    asset: "螺纹钢期货(RB)"
+    symbol: "rebar_futures"
+    data_deps:
+      - rebar_futures
+
+  volatility:
+    category: "technical"
+    description: "波动率锥因子：监测波动率异常与均值回归"
+    factor_module: "factors.technical.volatility"
+    factor_class: "VolatilityFactor"
+    asset: "通用（通过symbol参数指定品种）"
+    symbol: "pork_futures"
+    data_deps:
+      - pork_futures
+
+  volatility_copper:
+    category: "technical"
+    description: "铜期货波动率因子"
+    factor_module: "factors.technical.volatility"
+    factor_class: "VolatilityFactor"
+    asset: "铜期货(CU)"
+    symbol: "copper_futures"
+    data_deps:
+      - copper_futures
+
+  volatility_crude:
+    category: "technical"
+    description: "原油期货波动率因子"
+    factor_module: "factors.technical.volatility"
+    factor_class: "VolatilityFactor"
+    asset: "原油期货(SC)"
+    symbol: "crude_oil_futures"
+    data_deps:
+      - crude_oil_futures
+
+  volatility_gold:
+    category: "technical"
+    description: "黄金期货波动率因子"
+    factor_module: "factors.technical.volatility"
+    factor_class: "VolatilityFactor"
+    asset: "黄金期货(AU)"
+    symbol: "gold_futures"
+    data_deps:
+      - gold_futures
+
+  volatility_rebar:
+    category: "technical"
+    description: "螺纹钢期货波动率因子"
+    factor_module: "factors.technical.volatility"
+    factor_class: "VolatilityFactor"
+    asset: "螺纹钢期货(RB)"
+    symbol: "rebar_futures"
+    data_deps:
+      - rebar_futures
+
+  term_structure:
+    category: "technical"
+    description: "期限结构因子：监测期货升贴水结构变化"
+    factor_module: "factors.technical.term_structure"
+    factor_class: "TermStructureFactor"
+    asset: "通用（通过symbol参数指定品种）"
+    symbol: "pork_futures"
+    far_symbol: "pork_futures_far"
+    data_deps:
+      - pork_futures
+      - pork_futures_far
+
+  seasonality:
+    category: "technical"
+    description: "季节性因子：监测品种季节性规律与异常偏离"
+    factor_module: "factors.technical.seasonality"
+    factor_class: "SeasonalityFactor"
+    asset: "通用（通过symbol参数指定品种）"
+    symbol: "pork_futures"
+    data_deps:
+      - pork_futures
+
+  seasonality_copper:
+    category: "technical"
+    description: "铜期货季节性因子"
+    factor_module: "factors.technical.seasonality"
+    factor_class: "SeasonalityFactor"
+    asset: "铜期货(CU)"
+    symbol: "copper_futures"
+    data_deps:
+      - copper_futures
+
+  seasonality_crude:
+    category: "technical"
+    description: "原油期货季节性因子"
+    factor_module: "factors.technical.seasonality"
+    factor_class: "SeasonalityFactor"
+    asset: "原油期货(SC)"
+    symbol: "crude_oil_futures"
+    data_deps:
+      - crude_oil_futures
+
+  seasonality_gold:
+    category: "technical"
+    description: "黄金期货季节性因子"
+    factor_module: "factors.technical.seasonality"
+    factor_class: "SeasonalityFactor"
+    asset: "黄金期货(AU)"
+    symbol: "gold_futures"
+    data_deps:
+      - gold_futures
+
+  seasonality_rebar:
+    category: "technical"
+    description: "螺纹钢期货季节性因子"
+    factor_module: "factors.technical.seasonality"
+    factor_class: "SeasonalityFactor"
+    asset: "螺纹钢期货(RB)"
+    symbol: "rebar_futures"
+    data_deps:
+      - rebar_futures
