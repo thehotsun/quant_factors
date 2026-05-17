@@ -16,6 +16,20 @@ TUSHARE_TOKEN = "165fb826f4b6e41aeb37ef84b7f4c99df784cbfec771ee139dfae048"
 ts.set_token(TUSHARE_TOKEN)
 tushare_pro = ts.pro_api()
 
+
+def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
+    """从 FRED 直接下载 CSV 数据"""
+    try:
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
+        df = pd.read_csv(url)
+        df = df.rename(columns={'observation_date': 'date'})
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
+        return df
+    except Exception as e:
+        logger.warning(f"{name} FRED下载失败: {e}")
+        return None
+
 from core.factor_registry import FactorRegistry
 from core.signal_aggregator import SignalAggregator
 from core.data_bus import DataBus
@@ -488,7 +502,7 @@ def _daily_data_refresh():
             ("白银期货", lambda: fetch_tushare_futures("AG.SHF", "白银期货"), "silver_futures"),
             ("动力煤期货", lambda: fetch_tushare_futures("ZC.ZCE", "动力煤期货"), "thermal_coal_futures"),
             ("铁矿石期货", lambda: fetch_tushare_futures("I.DCE", "铁矿石期货"), "iron_ore_futures"),
-            ("美元人民币", lambda: ak.currency_boc_sina(symbol="美元"), "usd_cny"),
+            ("美元人民币", lambda: fetch_fred_csv("DEXCHUS", "USD/CNY汇率"), "usd_cny"),
             ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
             ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
             ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
@@ -525,9 +539,10 @@ def _daily_data_refresh_foreign():
         tasks = [
             ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
             ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
-            ("美国CPI", lambda: ak.macro_usa_cpi_monthly(), "us_cpi"),
+            ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
             ("布伦特原油", lambda: ak.energy_oil_hist(), "brent_oil"),
             ("EIA原油库存", lambda: ak.macro_usa_eia_crude_rate(), "eia_crude_stock"),
+            ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
         ]
 
         failed = 0

@@ -42,6 +42,20 @@ def save_parquet(df, name):
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")
 
 
+def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
+    """从 FRED 直接下载 CSV 数据"""
+    try:
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
+        df = pd.read_csv(url)
+        df = df.rename(columns={'observation_date': 'date'})
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
+        return df
+    except Exception as e:
+        print(f"  {name} 下载失败: {e}")
+        return None
+
+
 def fetch_tushare_futures(ts_code, name, start_date="20200101"):
     """从 Tushare 获取期货主力合约日线数据"""
     try:
@@ -103,8 +117,9 @@ def main():
 
     print("17. USD/CNY汇率")
     try:
-        forex = ak.currency_boc_sina(symbol="美元")
-        save_parquet(forex, "usd_cny")
+        forex = fetch_fred_csv("DEXCHUS", "USD/CNY汇率")
+        if forex is not None:
+            save_parquet(forex, "usd_cny")
     except Exception as e:
         print(f"  汇率下载失败: {e}")
 
@@ -155,8 +170,9 @@ def main():
 
     print("24. 美国CPI")
     try:
-        us_cpi = ak.macro_usa_cpi_monthly()
-        save_parquet(us_cpi, "us_cpi")
+        us_cpi = fetch_fred_csv("CPIAUCSL", "美国CPI")
+        if us_cpi is not None:
+            save_parquet(us_cpi, "us_cpi")
     except Exception as e:
         print(f"  美国CPI下载失败: {e}")
 
@@ -174,10 +190,17 @@ def main():
     except Exception as e:
         print(f"  QVIX下载失败: {e}")
 
+    print("27. TIPS收益率")
+    try:
+        tips = fetch_fred_csv("DFII10", "TIPS收益率")
+        if tips is not None:
+            save_parquet(tips, "tips_yield")
+    except Exception as e:
+        print(f"  TIPS下载失败: {e}")
+
     # ==================== 暂不支持的数据 ====================
     print("\n--- 暂不支持的数据 ---")
     print("  CBOT大豆 - 无可用接口")
-    print("  TIPS收益率 - 无可用接口")
     print("  鸡肉现货 - 接口已变更")
 
     print("\n历史数据下载完成！")
