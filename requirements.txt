@@ -1,5 +1,4 @@
 flask
-waitress
 pandas
 numpy
 akshare
@@ -8,3 +7,4 @@ scikit-learn
 pyyaml
 scipy
 apscheduler
+tushare

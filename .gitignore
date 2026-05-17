@@ -6,6 +6,7 @@ env/
 # 历史数据文件（体积大，且可从 AKShare 重新生成）
 data/*.parquet
 data/*.csv
+data/*.db
 
 # 日志文件
 logs/

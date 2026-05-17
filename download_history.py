@@ -1,10 +1,17 @@
 import akshare as ak
+import tushare as ts
 import pandas as pd
 from pathlib import Path
 import os
+import time
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
+
+# Tushare 配置
+TUSHARE_TOKEN = "165fb826f4b6e41aeb37ef84b7f4c99df784cbfec771ee139dfae048"
+ts.set_token(TUSHARE_TOKEN)
+pro = ts.pro_api()
 
 
 def save_parquet(df, name):
@@ -27,62 +34,65 @@ def save_parquet(df, name):
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")
 
 
+def fetch_tushare_futures(ts_code, name, start_date="20200101"):
+    """从 Tushare 获取期货主力合约日线数据"""
+    try:
+        df = pro.fut_daily(ts_code=ts_code, start_date=start_date)
+        if df is not None and not df.empty:
+            # 重命名列以匹配原有格式
+            df = df.rename(columns={
+                'trade_date': 'date',
+                'open': 'open',
+                'high': 'high',
+                'low': 'low',
+                'close': 'close',
+                'vol': 'volume',
+                'amount': 'amount',
+                'oi': 'open_interest'
+            })
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date')
+        return df
+    except Exception as e:
+        print(f"  {name} 下载失败: {e}")
+        return None
+
+
 def main():
-    print(" 开始下载历史数据...")
+    print("开始下载历史数据...")
 
-    # ==================== 原有数据 ====================
-    print("\n--- 原有数据 ---")
-    print("1. 生猪期货(主力)")
-    save_parquet(ak.futures_main_sina(symbol="LH"), "pork_futures")
+    # ==================== 国内期货（Tushare）====================
+    print("\n--- 国内期货（Tushare）---")
 
-    print("1b. 生猪期货(远月)")
-    try:
-        save_parquet(ak.futures_zh_daily_sina(symbol="LH2701"), "pork_futures_far")
-    except Exception as e:
-        print(f"  生猪远月下载失败: {e}")
+    futures_map = [
+        ("生猪期货", "LH.DCE", "pork_futures"),
+        ("鸡蛋期货", "JD.DCE", "egg_futures"),
+        ("豆粕期货", "M.DCE", "soybean_meal_futures"),
+        ("玉米期货", "C.DCE", "corn_futures"),
+        ("国产大豆", "A.DCE", "soybean_domestic_futures"),
+        ("进口大豆", "B.DCE", "soybean_import_futures"),
+        ("菜粕期货", "RM.ZCE", "rapeseed_meal_futures"),
+        ("豆油期货", "Y.DCE", "soybean_oil_futures"),
+        ("原油期货", "SC.INE", "crude_oil_futures"),
+        ("铜期货", "CU.SHF", "copper_futures"),
+        ("铝期货", "AL.SHF", "aluminum_futures"),
+        ("螺纹钢", "RB.SHF", "rebar_futures"),
+        ("黄金期货", "AU.SHF", "gold_futures"),
+        ("白银期货", "AG.SHF", "silver_futures"),
+        ("动力煤", "ZC.ZCE", "thermal_coal_futures"),
+        ("铁矿石", "I.DCE", "iron_ore_futures"),
+    ]
 
-    print("2. 布伦特原油")
-    save_parquet(ak.energy_oil_hist(), "brent_oil")
+    for i, (name, code, filename) in enumerate(futures_map, 1):
+        print(f"{i}. {name}")
+        df = fetch_tushare_futures(code, name)
+        if df is not None:
+            save_parquet(df, filename)
+        time.sleep(0.5)  # 避免频率限制
 
-    save_parquet(ak.macro_usa_cpi(), "us_cpi")
+    # ==================== 宏观数据（AKShare）====================
+    print("\n--- 宏观数据（AKShare）---")
 
-    print("5. 中国PMI")
-    save_parquet(ak.macro_china_pmi(), "pmi")
-
-    # ==================== 肉类数据 ====================
-    print("\n--- 肉类数据 ---")
-    print("7. 鸡蛋期货")
-    save_parquet(ak.futures_main_sina(symbol="JD"), "egg_futures")
-
-    print("8. 鸡肉现货(白羽肉鸡)")
-    try:
-        chicken = ak.futures_spot_price(symbol="白羽肉鸡")
-        save_parquet(chicken, "chicken_spot")
-    except Exception as e:
-        print(f"  鸡肉现货下载失败: {e}")
-
-    # ==================== 饲料数据 ====================
-    print("\n--- 饲料数据 ---")
-    print("11. 豆粕期货")
-    save_parquet(ak.futures_main_sina(symbol="M"), "soybean_meal_futures")
-
-    print("12. 玉米期货")
-    save_parquet(ak.futures_main_sina(symbol="C"), "corn_futures")
-
-    print("13. 国产大豆期货(A)")
-    save_parquet(ak.futures_main_sina(symbol="A"), "soybean_domestic_futures")
-
-    print("14. 进口大豆期货(B)")
-    save_parquet(ak.futures_main_sina(symbol="B"), "soybean_import_futures")
-
-    print("15. 菜粕期货")
-    save_parquet(ak.futures_main_sina(symbol="RM"), "rapeseed_meal_futures")
-
-    print("16. 豆油期货")
-    save_parquet(ak.futures_main_sina(symbol="Y"), "soybean_oil_futures")
-
-    # ==================== 宏观数据 ====================
-    print("\n--- 宏观数据 ---")
     print("17. USD/CNY汇率")
     try:
         forex = ak.currency_boc_sina(symbol="美元")
@@ -90,19 +100,19 @@ def main():
     except Exception as e:
         print(f"  汇率下载失败: {e}")
 
-    print("18. CBOT大豆")
-    try:
-        cbot = ak.futures_foreign_hist(symbol="ZS")
-        save_parquet(cbot, "cbot_soybean")
-    except Exception as e:
-        print(f"  CBOT大豆下载失败: {e}")
-
-    print("19. 中国CPI")
+    print("18. 中国CPI")
     try:
         cpi = ak.macro_china_cpi()
         save_parquet(cpi, "cpi")
     except Exception as e:
         print(f"  CPI下载失败: {e}")
+
+    print("19. 中国PMI")
+    try:
+        pmi = ak.macro_china_pmi()
+        save_parquet(pmi, "pmi")
+    except Exception as e:
+        print(f"  PMI下载失败: {e}")
 
     print("20. M2货币供应量")
     try:
@@ -118,10 +128,15 @@ def main():
     except Exception as e:
         print(f"  社融下载失败: {e}")
 
-    # ==================== 能源数据 ====================
-    print("\n--- 能源数据 ---")
-    print("22. 原油期货(SC)")
-    save_parquet(ak.futures_main_sina(symbol="SC"), "crude_oil_futures")
+    # ==================== 外盘数据（AKShare）====================
+    print("\n--- 外盘数据（AKShare）---")
+
+    print("22. 布伦特原油")
+    try:
+        brent = ak.energy_oil_hist()
+        save_parquet(brent, "brent_oil")
+    except Exception as e:
+        print(f"  布伦特原油下载失败: {e}")
 
     print("23. 天然气期货(NG)")
     try:
@@ -130,58 +145,34 @@ def main():
     except Exception as e:
         print(f"  天然气下载失败: {e}")
 
-    # ==================== 金属数据 ====================
-    print("\n--- 金属数据 ---")
-    print("24. 铜期货(CU)")
-    save_parquet(ak.futures_main_sina(symbol="CU"), "copper_futures")
-
-    print("25. 铝期货(AL)")
-    save_parquet(ak.futures_main_sina(symbol="AL"), "aluminum_futures")
-
-    print("26. 螺纹钢期货(RB)")
-    save_parquet(ak.futures_main_sina(symbol="RB"), "rebar_futures")
-
-    print("27. 黄金期货(AU)")
-    save_parquet(ak.futures_main_sina(symbol="AU"), "gold_futures")
-    print("28. 白银期货(AG)")
-    save_parquet(ak.futures_main_sina(symbol="AG"), "silver_futures")
-
-    print("29. 动力煤期货(ZC)")
+    print("24. 美国CPI")
     try:
-        save_parquet(ak.futures_main_sina(symbol="ZC"), "thermal_coal_futures")
+        us_cpi = ak.macro_usa_cpi_monthly()
+        save_parquet(us_cpi, "us_cpi")
     except Exception as e:
-        print(f"  动力煤下载失败: {e}")
+        print(f"  美国CPI下载失败: {e}")
 
-    print("30. 铁矿石期货(I)")
+    print("25. EIA原油库存")
     try:
-        save_parquet(ak.futures_main_sina(symbol="I"), "iron_ore_futures")
-    except Exception as e:
-        print(f"  铁矿石下载失败: {e}")
-
-    # ==================== 海外数据 ====================
-    print("\n--- 海外数据 ---")
-    print("31. EIA原油库存")
-    try:
-        eia = ak.energy_eia_crude()
+        eia = ak.macro_usa_eia_crude_rate()
         save_parquet(eia, "eia_crude_stock")
     except Exception as e:
-        print(f"  EIA库存下载失败: {e}（AKShare可能暂不支持此接口）")
+        print(f"  EIA库存下载失败: {e}")
 
-    print("32. 美国TIPS收益率(实际利率)")
+    print("26. QVIX波动率")
     try:
-        tips = ak.macro_usa_tips_yield()
-        save_parquet(tips, "tips_yield")
-    except Exception as e:
-        print(f"  TIPS下载失败: {e}")
-
-    print("33. VIX恐慌指数")
-    try:
-        vix = ak.index_vix()
+        vix = ak.index_option_300etf_qvix()
         save_parquet(vix, "vix")
     except Exception as e:
-        print(f"  VIX下载失败: {e}")
+        print(f"  QVIX下载失败: {e}")
 
-    print("\n 历史数据下载完成！")
+    # ==================== 暂不支持的数据 ====================
+    print("\n--- 暂不支持的数据 ---")
+    print("  CBOT大豆 - 无可用接口")
+    print("  TIPS收益率 - 无可用接口")
+    print("  鸡肉现货 - 接口已变更")
+
+    print("\n历史数据下载完成！")
 
 
 if __name__ == "__main__":

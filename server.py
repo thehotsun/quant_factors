@@ -1,7 +1,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify
-from waitress import serve
+
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +9,12 @@ import yaml
 import os
 import logging
 import akshare as ak
+import tushare as ts
+
+# Tushare 配置
+TUSHARE_TOKEN = "165fb826f4b6e41aeb37ef84b7f4c99df784cbfec771ee139dfae048"
+ts.set_token(TUSHARE_TOKEN)
+tushare_pro = ts.pro_api()
 
 from core.factor_registry import FactorRegistry
 from core.signal_aggregator import SignalAggregator
@@ -463,32 +469,30 @@ def _daily_data_refresh():
     """定时任务：每日数据刷新（国内品种，18:00执行）"""
     logger.info("开始每日数据刷新（国内品种）...")
     try:
-        from download_history import save_parquet
+        from download_history import save_parquet, fetch_tushare_futures
 
         tasks = [
-            ("生猪期货", lambda: ak.futures_main_sina(symbol="LH"), "pork_futures"),
-            ("生猪远月", lambda: ak.futures_zh_daily_sina(symbol="LH2701"), "pork_futures_far"),
-            ("鸡蛋期货", lambda: ak.futures_main_sina(symbol="JD"), "egg_futures"),
-            ("豆粕期货", lambda: ak.futures_main_sina(symbol="M"), "soybean_meal_futures"),
-            ("玉米期货", lambda: ak.futures_main_sina(symbol="C"), "corn_futures"),
-            ("国产大豆", lambda: ak.futures_main_sina(symbol="A"), "soybean_domestic_futures"),
-            ("进口大豆", lambda: ak.futures_main_sina(symbol="B"), "soybean_import_futures"),
-            ("菜粕期货", lambda: ak.futures_main_sina(symbol="RM"), "rapeseed_meal_futures"),
-            ("豆油期货", lambda: ak.futures_main_sina(symbol="Y"), "soybean_oil_futures"),
-            ("原油期货", lambda: ak.futures_main_sina(symbol="SC"), "crude_oil_futures"),
-            ("动力煤期货", lambda: ak.futures_main_sina(symbol="ZC"), "thermal_coal_futures"),
-            ("铜期货", lambda: ak.futures_main_sina(symbol="CU"), "copper_futures"),
-            ("铝期货", lambda: ak.futures_main_sina(symbol="AL"), "aluminum_futures"),
-            ("螺纹钢", lambda: ak.futures_main_sina(symbol="RB"), "rebar_futures"),
-            ("黄金期货", lambda: ak.futures_main_sina(symbol="AU"), "gold_futures"),
-            ("白银期货", lambda: ak.futures_main_sina(symbol="AG"), "silver_futures"),
-            ("铁矿石期货", lambda: ak.futures_main_sina(symbol="I"), "iron_ore_futures"),
+            ("生猪期货", lambda: fetch_tushare_futures("LH.DCE", "生猪期货"), "pork_futures"),
+            ("鸡蛋期货", lambda: fetch_tushare_futures("JD.DCE", "鸡蛋期货"), "egg_futures"),
+            ("豆粕期货", lambda: fetch_tushare_futures("M.DCE", "豆粕期货"), "soybean_meal_futures"),
+            ("玉米期货", lambda: fetch_tushare_futures("C.DCE", "玉米期货"), "corn_futures"),
+            ("国产大豆", lambda: fetch_tushare_futures("A.DCE", "国产大豆"), "soybean_domestic_futures"),
+            ("进口大豆", lambda: fetch_tushare_futures("B.DCE", "进口大豆"), "soybean_import_futures"),
+            ("菜粕期货", lambda: fetch_tushare_futures("RM.ZCE", "菜粕期货"), "rapeseed_meal_futures"),
+            ("豆油期货", lambda: fetch_tushare_futures("Y.DCE", "豆油期货"), "soybean_oil_futures"),
+            ("原油期货", lambda: fetch_tushare_futures("SC.INE", "原油期货"), "crude_oil_futures"),
+            ("铜期货", lambda: fetch_tushare_futures("CU.SHF", "铜期货"), "copper_futures"),
+            ("铝期货", lambda: fetch_tushare_futures("AL.SHF", "铝期货"), "aluminum_futures"),
+            ("螺纹钢", lambda: fetch_tushare_futures("RB.SHF", "螺纹钢"), "rebar_futures"),
+            ("黄金期货", lambda: fetch_tushare_futures("AU.SHF", "黄金期货"), "gold_futures"),
+            ("白银期货", lambda: fetch_tushare_futures("AG.SHF", "白银期货"), "silver_futures"),
+            ("动力煤期货", lambda: fetch_tushare_futures("ZC.ZCE", "动力煤期货"), "thermal_coal_futures"),
+            ("铁矿石期货", lambda: fetch_tushare_futures("I.DCE", "铁矿石期货"), "iron_ore_futures"),
             ("美元人民币", lambda: ak.currency_boc_sina(symbol="美元"), "usd_cny"),
             ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
             ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
             ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
             ("社融规模", lambda: ak.macro_china_shrzgm(), "social_financing"),
-            ("鸡肉现货", lambda: ak.futures_spot_price(symbol="白羽肉鸡"), "chicken_spot"),
         ]
 
         failed = 0
@@ -520,12 +524,10 @@ def _daily_data_refresh_foreign():
 
         tasks = [
             ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
-            ("CBOT大豆", lambda: ak.futures_foreign_hist(symbol="ZS"), "cbot_soybean"),
-            ("VIX恐慌指数", lambda: ak.index_vix(), "vix"),
-            ("美国CPI", lambda: ak.macro_usa_cpi(), "us_cpi"),
+            ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
+            ("美国CPI", lambda: ak.macro_usa_cpi_monthly(), "us_cpi"),
             ("布伦特原油", lambda: ak.energy_oil_hist(), "brent_oil"),
-            ("EIA原油库存", lambda: ak.energy_eia_crude(), "eia_crude_stock"),
-            ("TIPS收益率", lambda: ak.macro_usa_tips_yield(), "tips_yield"),
+            ("EIA原油库存", lambda: ak.macro_usa_eia_crude_rate(), "eia_crude_stock"),
         ]
 
         failed = 0
@@ -666,7 +668,9 @@ def push_chain(chain_name):
     })
 
 
+# 初始化（gunicorn import 时自动执行）
+init_push_channels()
+_init_scheduler()
+
 if __name__ == '__main__':
-    init_push_channels()
-    _init_scheduler()
-    serve(app, host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=5001)
