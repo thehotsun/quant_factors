@@ -72,8 +72,9 @@ class SoybeanFactor(BaseFactor):
     def signal(self) -> Optional[Dict[str, Any]]:
         data = self._get_or_calculate()
         import_change = data.get("import_change")
+        change_threshold = self.params.get("change_threshold", 0.03)
 
-        if import_change is not None and import_change >= 0.03:
+        if import_change is not None and import_change >= change_threshold:
             return self._make_signal(
                 asset="豆粕期货(M)", direction="BUY",
                 reason=f"进口大豆单日上涨{import_change*100:.1f}%，豆粕成本推升预期",
@@ -81,7 +82,7 @@ class SoybeanFactor(BaseFactor):
                 strength=0.6, trigger="import_soybean_surge", import_change=import_change,
             )
 
-        if import_change is not None and import_change <= -0.03:
+        if import_change is not None and import_change <= -change_threshold:
             return self._make_signal(
                 asset="养殖ETF(159865)", direction="BUY",
                 reason=f"进口大豆下跌{abs(import_change)*100:.1f}%，饲料成本下降→养殖利润改善",

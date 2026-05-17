@@ -14,6 +14,7 @@ from core.factor_registry import FactorRegistry
 from core.signal_aggregator import SignalAggregator
 from core.data_bus import DataBus
 from core.signal_logger import SignalLogger
+from core.push import get_push_manager, init_push_channels, format_signal_report
 from evaluation.ic_monitor import ICMonitor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -138,9 +139,11 @@ def _run_factor_chain(chain_name):
 
     if data is not None:
         try:
-            fv = _extract_factor_value(data)
+            fv = _extract_factor_value(data, chain_name)
             if fv is not None:
                 _ic_monitor.snapshot(chain_name, fv, strength)
+            else:
+                logger.debug(f"因子 {chain_name} 无有效因子值，跳过 IC 快照")
         except Exception as e:
             logger.warning(f"因子 {chain_name} IC快照失败: {e}")
 
@@ -151,7 +154,7 @@ def _run_factor_chain(chain_name):
     }
 
 
-def _extract_factor_value(data):
+def _extract_factor_value(data, factor_name: str = "unknown"):
     if data is None:
         return None
     if isinstance(data, (int, float)):
@@ -163,15 +166,25 @@ def _extract_factor_value(data):
             return float(data["factor_value"])
         except (ValueError, TypeError):
             pass
-    for key in ["zscore", "ratio", "score", "value", "change", "spread", "margin", "diff"]:
+
+    _FALLBACK_KEYS = [
+        "zscore", "zscore_20d", "ratio", "pig_grain_ratio", "egg_feed_ratio",
+        "pig_chicken_ratio", "copper_gold_ratio", "oil_gas_ratio", "iron_rebar_ratio",
+        "score", "momentum_score", "value", "change", "spread", "margin", "crush_margin",
+        "diff", "divergence",
+        "current_price", "current", "current_cpi", "current_pmi", "latest",
+        "cpi_actual", "cbot_soybean", "vix_current", "usd_cny",
+        "domestic_soybean", "iron_ore_price", "feed_cost_index",
+        "m2_yoy", "sf_growth", "pmi",
+        "cost_per_jin", "vol_ratio", "seasonal_avg_return", "seasonal_win_rate",
+    ]
+    for key in _FALLBACK_KEYS:
         if key in data and data[key] is not None:
             try:
-                return float(data[key])
-            except (ValueError, TypeError):
-                continue
-    for key in ["current_price", "current", "latest", "cpi_actual"]:
-        if key in data and data[key] is not None:
-            try:
+                logger.debug(
+                    f"因子 {factor_name} 未使用 'factor_value' 字段，"
+                    f"通过 fallback key '{key}' 提取因子值。"
+                )
                 return float(data[key])
             except (ValueError, TypeError):
                 continue
@@ -231,10 +244,15 @@ def _run_composite_chain(chain_name):
                         sig = dict(result["opportunity"])
                         sig["_chain"] = chain_name_item
                         signals.append(sig)
+                else:
+                    logger.warning(f"综合链子链条 {chain_name_item} 返回None（因子实例化失败或chains.yaml配置错误）")
+                    results[chain_name_item] = {"error": "因子实例化失败", "error_type": "InstantiationError"}
             except Exception as e:
                 results[chain_name_item] = {"error": str(e), "error_type": type(e).__name__}
 
     aggregated = SignalAggregator.aggregate(signals, method="weighted") if signals else None
+
+    all_failed = len(results) > 0 and all(r.get("error") for r in results.values())
 
     return jsonify({
         "chain": chain_name,
@@ -243,6 +261,8 @@ def _run_composite_chain(chain_name):
         "signal_count": len(signals),
         "aggregated_signal": aggregated,
         "all_results": results,
+        "all_sub_chains_failed": all_failed,
+        "error": "所有子链条均计算失败" if all_failed else None,
         "timestamp": datetime.now().isoformat()
     })
 
@@ -440,8 +460,8 @@ def _retry_fetch(name, fetcher, max_retries=3, base_delay=2):
 
 
 def _daily_data_refresh():
-    """定时任务：每日数据刷新"""
-    logger.info("开始每日数据刷新...")
+    """定时任务：每日数据刷新（国内品种，18:00执行）"""
+    logger.info("开始每日数据刷新（国内品种）...")
     try:
         from download_history import save_parquet
 
@@ -456,52 +476,94 @@ def _daily_data_refresh():
             ("菜粕期货", lambda: ak.futures_main_sina(symbol="RM"), "rapeseed_meal_futures"),
             ("豆油期货", lambda: ak.futures_main_sina(symbol="Y"), "soybean_oil_futures"),
             ("原油期货", lambda: ak.futures_main_sina(symbol="SC"), "crude_oil_futures"),
-            ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
             ("动力煤期货", lambda: ak.futures_main_sina(symbol="ZC"), "thermal_coal_futures"),
             ("铜期货", lambda: ak.futures_main_sina(symbol="CU"), "copper_futures"),
             ("铝期货", lambda: ak.futures_main_sina(symbol="AL"), "aluminum_futures"),
             ("螺纹钢", lambda: ak.futures_main_sina(symbol="RB"), "rebar_futures"),
             ("黄金期货", lambda: ak.futures_main_sina(symbol="AU"), "gold_futures"),
             ("白银期货", lambda: ak.futures_main_sina(symbol="AG"), "silver_futures"),
+            ("铁矿石期货", lambda: ak.futures_main_sina(symbol="I"), "iron_ore_futures"),
             ("美元人民币", lambda: ak.currency_boc_sina(symbol="美元"), "usd_cny"),
             ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
             ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
             ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
-            ("CBOT大豆", lambda: ak.futures_foreign_hist(symbol="ZS"), "cbot_soybean"),
-            ("铁矿石期货", lambda: ak.futures_main_sina(symbol="I"), "iron_ore_futures"),
             ("社融规模", lambda: ak.macro_china_shrzgm(), "social_financing"),
-            ("VIX恐慌指数", lambda: ak.index_vix(), "vix"),
-            ("美国CPI", lambda: ak.macro_usa_cpi(), "us_cpi"),
-            ("布伦特原油", lambda: ak.energy_oil_hist(), "brent_oil"),
-            ("EIA原油库存", lambda: ak.energy_eia_crude(), "eia_crude_stock"),
-            ("TIPS收益率", lambda: ak.macro_usa_tips_yield(), "tips_yield"),
             ("鸡肉现货", lambda: ak.futures_spot_price(symbol="白羽肉鸡"), "chicken_spot"),
         ]
 
+        failed = 0
         for name, fetcher, filename in tasks:
             try:
                 df = _retry_fetch(name, fetcher)
                 save_parquet(df, filename)
                 logger.info(f"  {name} 刷新成功")
             except Exception as e:
+                failed += 1
                 logger.warning(f"  {name} 刷新失败（已重试3次）: {e}")
 
+        if failed == len(tasks):
+            logger.error("所有国内数据源刷新失败！请检查网络连接")
+        elif failed > 0:
+            logger.warning(f"国内数据刷新部分失败: {failed}/{len(tasks)}")
+
         _data_bus.invalidate()
-        logger.info("每日数据刷新完成")
+        logger.info("每日数据刷新（国内品种）完成")
     except Exception as e:
         logger.error(f"每日数据刷新异常: {e}")
+
+
+def _daily_data_refresh_foreign():
+    """定时任务：外盘数据刷新（次日06:00执行，确保外盘已收盘）"""
+    logger.info("开始外盘数据刷新...")
+    try:
+        from download_history import save_parquet
+
+        tasks = [
+            ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
+            ("CBOT大豆", lambda: ak.futures_foreign_hist(symbol="ZS"), "cbot_soybean"),
+            ("VIX恐慌指数", lambda: ak.index_vix(), "vix"),
+            ("美国CPI", lambda: ak.macro_usa_cpi(), "us_cpi"),
+            ("布伦特原油", lambda: ak.energy_oil_hist(), "brent_oil"),
+            ("EIA原油库存", lambda: ak.energy_eia_crude(), "eia_crude_stock"),
+            ("TIPS收益率", lambda: ak.macro_usa_tips_yield(), "tips_yield"),
+        ]
+
+        failed = 0
+        for name, fetcher, filename in tasks:
+            try:
+                df = _retry_fetch(name, fetcher)
+                save_parquet(df, filename)
+                logger.info(f"  {name} 刷新成功")
+            except Exception as e:
+                failed += 1
+                logger.warning(f"  {name} 刷新失败（已重试3次）: {e}")
+
+        if failed == len(tasks):
+            logger.error("所有外盘数据源刷新失败！请检查网络连接")
+        elif failed > 0:
+            logger.warning(f"外盘数据刷新部分失败: {failed}/{len(tasks)}")
+
+        _data_bus.invalidate()
+        logger.info("外盘数据刷新完成")
+    except Exception as e:
+        logger.error(f"外盘数据刷新异常: {e}")
 
 
 def _daily_ic_compute():
     """定时任务：每日 IC 计算"""
     logger.info("开始每日 IC 计算...")
     _ensure_imported()
+
+    _MONTHLY_SOURCES = {"cpi", "pmi", "m2", "social_financing", "us_cpi"}
+
     computed = 0
     for chain_name, cfg in CHAINS_CONFIG.items():
         if cfg.get("category") == "composite":
             continue
         data_deps = cfg.get("data_deps", [])
         if not data_deps:
+            continue
+        if data_deps[0] in _MONTHLY_SOURCES:
             continue
         price_df = _data_bus.get(data_deps[0])
         if price_df is None or len(price_df) < 20:
@@ -515,6 +577,39 @@ def _daily_ic_compute():
     logger.info(f"每日 IC 计算完成，共计算 {computed} 个因子")
 
 
+def _daily_push():
+    """定时任务：每日推送分析结论（18:35执行，在数据刷新和IC计算之后）"""
+    logger.info("开始每日分析推送...")
+    composite_chains = [
+        name for name, cfg in CHAINS_CONFIG.items()
+        if cfg.get("category") == "composite"
+    ]
+
+    if not composite_chains:
+        logger.warning("未配置综合链条，跳过推送")
+        return
+
+    push_mgr = get_push_manager()
+    success_count = 0
+    for chain_name in composite_chains:
+        try:
+            result = _run_composite_chain(chain_name)
+            if hasattr(result, 'get_json'):
+                result_data = result.get_json()
+            else:
+                import json as _json
+                result_data = _json.loads(result.get_data(as_text=True))
+            content = format_signal_report(result_data)
+            title = f"量化分析日报 - {chain_name}"
+            push_result = push_mgr.send(title, content)
+            if any(push_result.values()):
+                success_count += 1
+        except Exception as e:
+            logger.error(f"推送 {chain_name} 失败: {e}")
+
+    logger.info(f"每日推送完成: {success_count}/{len(composite_chains)} 个链条推送成功")
+
+
 def _init_scheduler():
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -524,11 +619,54 @@ def _init_scheduler():
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(_daily_data_refresh, 'cron', hour=18, minute=0, id='daily_refresh')
+    scheduler.add_job(_daily_data_refresh_foreign, 'cron', hour=6, minute=0, id='daily_refresh_foreign')
     scheduler.add_job(_daily_ic_compute, 'cron', hour=18, minute=30, id='daily_ic')
+    scheduler.add_job(_daily_push, 'cron', hour=18, minute=35, id='daily_push')
     scheduler.start()
-    logger.info("APScheduler 已启动: 每日 18:00 数据刷新, 18:30 IC 计算")
+    logger.info("APScheduler 已启动: 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送")
+
+
+@app.route('/push/<chain_name>', methods=['GET'])
+def push_chain(chain_name):
+    _ensure_imported()
+    if chain_name not in CHAINS_CONFIG:
+        return jsonify({"error": f"unknown chain: {chain_name}"}), 400
+
+    cfg = CHAINS_CONFIG[chain_name]
+    if cfg.get("category") == "composite":
+        result = _run_composite_chain(chain_name)
+    else:
+        factor_result = _run_factor_chain(chain_name)
+        result = jsonify({
+            "chain": chain_name,
+            "description": cfg.get("description", ""),
+            "active_signals": [factor_result["opportunity"]] if factor_result and factor_result.get("opportunity") else [],
+            "signal_count": 1 if factor_result and factor_result.get("opportunity") else 0,
+            "aggregated_signal": factor_result.get("opportunity") if factor_result else None,
+            "all_results": {chain_name: factor_result} if factor_result else {},
+            "timestamp": datetime.now().isoformat()
+        })
+
+    if hasattr(result, 'get_json'):
+        result_data = result.get_json()
+    else:
+        import json as _json
+        result_data = _json.loads(result.get_data(as_text=True))
+
+    content = format_signal_report(result_data)
+    title = f"量化分析 - {chain_name}"
+    push_mgr = get_push_manager()
+    push_result = push_mgr.send(title, content)
+
+    return jsonify({
+        "chain": chain_name,
+        "push_result": push_result,
+        "content": content,
+        "timestamp": datetime.now().isoformat()
+    })
 
 
 if __name__ == '__main__':
+    init_push_channels()
     _init_scheduler()
     serve(app, host='0.0.0.0', port=5001)

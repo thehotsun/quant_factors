@@ -143,7 +143,7 @@ class CrudeOilFactor(BaseFactor):
                 asset="原油期货(SC)", direction="SELL",
                 reason=f"原油Z-score={zscore:.1f}，极端高位→超买回调",
                 holding_days=5, stop_loss=-0.02, confidence=0.55,
-                strength=-0.55, trigger="oil_zscore_high", zscore=zscore,
+                strength=-min(1.0, zscore / 3.0), trigger="oil_zscore_high", zscore=zscore,
             )
 
         if change is not None and threshold and change >= threshold:
@@ -321,14 +321,14 @@ class OilGasRatio(BaseFactor):
 
         min_len = min(len(oil_df), len(gas_df))
         if min_len >= 60:
-            ratios = []
-            for i in range(max(0, min_len - 60), min_len):
-                op = float(oil_df['close'].iloc[i])
-                gp = float(gas_df['close'].iloc[i])
-                if gp > 0:
-                    ratios.append(op / gp)
-            if ratios:
-                ratio_series = pd.Series(ratios)
+            merged = pd.merge(
+                oil_df[['date', 'close']].rename(columns={'close': 'oil'}),
+                gas_df[['date', 'close']].rename(columns={'close': 'gas'}),
+                on='date', how='inner'
+            )
+            if len(merged) >= 20:
+                merged['ratio'] = merged['oil'] / merged['gas']
+                ratio_series = merged['ratio'].tail(60)
                 result["ratio_percentile"] = round(
                     self._percentile(result["oil_gas_ratio"], ratio_series) * 100, 1
                 )

@@ -56,25 +56,23 @@ class IronRebarCostLink(BaseFactor):
 
         result["steel_profit"] = round(rebar_current - iron_current * 1.6 - 800, 0)
 
-        min_len = min(len(iron_df), len(rebar_df))
-        if min_len >= 60:
-            iron_series = iron_df['close'].astype(float).tail(min_len)
-            rebar_series = rebar_df['close'].astype(float).tail(min_len)
-            ratios = []
-            for i in range(min_len):
-                r = float(rebar_series.iloc[i])
-                if r > 0:
-                    ratios.append(float(iron_series.iloc[i]) / r)
-            if ratios:
-                ratio_series = pd.Series(ratios)
+        if len(iron_df) >= 60 and len(rebar_df) >= 60:
+            merged = pd.merge(
+                iron_df[['date', 'close']].rename(columns={'close': 'iron'}),
+                rebar_df[['date', 'close']].rename(columns={'close': 'rebar'}),
+                on='date', how='inner'
+            )
+            if len(merged) >= 20:
+                merged['ratio'] = merged['iron'] / merged['rebar']
+                ratio_series = merged['ratio'].tail(60)
                 result["ratio_zscore"] = self._zscore(result["iron_rebar_ratio"], ratio_series)
                 result["ratio_percentile"] = round(self._percentile(result["iron_rebar_ratio"], ratio_series) * 100, 1)
 
         iron_change_5d = None
         rebar_change_5d = None
         if len(iron_df) >= 5 and len(rebar_df) >= 5:
-            iron_5d = self._safe_float(iron_df.iloc[-5], -1)
-            rebar_5d = self._safe_float(rebar_df.iloc[-5], -1)
+            iron_5d = self._safe_float(iron_df.tail(5), -5)
+            rebar_5d = self._safe_float(rebar_df.tail(5), -5)
             iron_change_5d = self._pct_change(iron_current, iron_5d)
             rebar_change_5d = self._pct_change(rebar_current, rebar_5d)
             result["iron_change_5d"] = iron_change_5d

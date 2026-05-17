@@ -73,7 +73,7 @@ class VixFactor(BaseFactor):
         oil_df = self.load("crude_oil_futures")
         if oil_df is not None and len(oil_df) >= 5:
             oil_current = self._safe_float(oil_df.tail(1), -1)
-            oil_5d_ago = self._safe_float(oil_df.iloc[-5], -1)
+            oil_5d_ago = float(oil_df['close'].iloc[-5]) if 'close' in oil_df.columns else None
             oil_change = self._pct_change(oil_current, oil_5d_ago)
             if oil_change is not None and oil_change < -0.10 and current is not None and current > 30:
                 result["liquidity_crisis"] = "油价暴跌+VIX飙升→流动性危机→现金为王→黄金也可能承压"

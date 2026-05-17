@@ -50,7 +50,17 @@ class SocialFinancingFactor(BaseFactor):
                 recent = sf_df[col].tail(3).astype(float)
                 result["sf_latest"] = float(recent.iloc[-1])
                 result["sf_ma3"] = float(recent.mean())
-                if len(sf_df) >= 13:
+                if "月份" in sf_df.columns:
+                    sf_df["月份_dt"] = pd.to_datetime(sf_df["月份"].astype(str).str.replace("年", "-").str.replace("月", ""), errors="coerce")
+                    latest_date = sf_df["月份_dt"].max()
+                    if pd.notna(latest_date):
+                        prev_year_date = latest_date - pd.DateOffset(years=1)
+                        prev_year_rows = sf_df[sf_df["月份_dt"] <= prev_year_date].tail(3)
+                        if len(prev_year_rows) >= 1:
+                            prev_avg = float(prev_year_rows[col].astype(float).mean())
+                            if prev_avg > 0:
+                                result["sf_growth"] = round((result["sf_ma3"] / prev_avg - 1) * 100, 1)
+                elif len(sf_df) >= 13:
                     prev_year = sf_df[col].iloc[-13:-10].astype(float)
                     prev_avg = float(prev_year.mean())
                     if prev_avg > 0:

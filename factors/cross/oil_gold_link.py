@@ -35,10 +35,13 @@ class OilGoldLink(BaseFactor):
 
     def calculate(self) -> Dict[str, Any]:
         result = {
+            "factor_value": None,
             "oil_price": None, "gold_price": None,
             "oil_change_5d": None, "oil_change_20d": None,
             "gold_change_5d": None, "gold_change_20d": None,
             "oil_gold_corr_60d": None,
+            "adaptive_oil_surge": None, "adaptive_oil_crash": None,
+            "adaptive_oil_corr": None,
         }
 
         oil_df = self.load("crude_oil_futures")
@@ -65,6 +68,9 @@ class OilGoldLink(BaseFactor):
             gold_20d_ago = self._safe_float(gold_df.tail(20), -20)
             result["gold_change_20d"] = self._pct_change(gold_price, gold_20d_ago)
 
+        if result["oil_change_20d"] is not None and result["gold_change_20d"] is not None:
+            result["factor_value"] = round(result["oil_change_20d"] - result["gold_change_20d"], 4)
+
         min_len = min(len(oil_df), len(gold_df))
         if min_len >= 60:
             oil_returns = oil_df['close'].astype(float).pct_change().dropna().tail(60)
@@ -73,6 +79,16 @@ class OilGoldLink(BaseFactor):
             if common_len >= 20:
                 corr = oil_returns.tail(common_len).corr(gold_returns.tail(common_len))
                 result["oil_gold_corr_60d"] = round(float(corr), 3)
+            if len(oil_returns) >= 20:
+                result["adaptive_oil_surge"] = round(self._adaptive_threshold(
+                    "oil_surge", 0.10, oil_returns, vol_sensitivity=30.0
+                ), 4)
+                result["adaptive_oil_crash"] = round(self._adaptive_threshold(
+                    "oil_crash", 0.15, oil_returns, vol_sensitivity=30.0
+                ), 4)
+                result["adaptive_oil_corr"] = round(self._adaptive_threshold(
+                    "oil_corr", 0.05, oil_returns, vol_sensitivity=30.0
+                ), 4)
 
         return result
 
@@ -81,11 +97,14 @@ class OilGoldLink(BaseFactor):
         oil_change = data.get("oil_change_20d")
         gold_change = data.get("gold_change_20d")
         corr = data.get("oil_gold_corr_60d")
+        surge_threshold = data.get("adaptive_oil_surge", 0.10)
+        crash_threshold = data.get("adaptive_oil_crash", 0.15)
+        corr_threshold = data.get("adaptive_oil_corr", 0.05)
 
         if oil_change is None:
             return None
 
-        if oil_change >= 0.10 and gold_change is not None and gold_change < oil_change:
+        if oil_change >= surge_threshold and gold_change is not None and gold_change < oil_change:
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
                 reason=f"原油20日涨{oil_change*100:.1f}%但黄金仅涨{gold_change*100:.1f}%，通胀预期未充分定价→黄金补涨",
@@ -94,7 +113,7 @@ class OilGoldLink(BaseFactor):
                 oil_change_20d=oil_change, gold_change_20d=gold_change,
             )
 
-        if oil_change <= -0.15:
+        if oil_change <= -crash_threshold:
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
                 reason=f"原油20日暴跌{oil_change*100:.1f}%，恐慌情绪→避险需求",
@@ -103,7 +122,7 @@ class OilGoldLink(BaseFactor):
                 oil_change_20d=oil_change,
             )
 
-        if corr is not None and corr > 0.5 and oil_change >= 0.05:
+        if corr is not None and corr > 0.5 and oil_change >= corr_threshold:
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
                 reason=f"油金60日相关性{corr}，油价涨{oil_change*100:.1f}%→通胀传导→黄金受益",

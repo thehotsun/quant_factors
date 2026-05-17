@@ -9,6 +9,8 @@ from scipy import stats
 
 logger = logging.getLogger(__name__)
 
+SQLITE_TIMEOUT = 10
+
 
 class ICMonitor:
     """IC 监控：跟踪因子预测能力衰减，发现失效因子"""
@@ -35,7 +37,7 @@ class ICMonitor:
         self._init_db()
 
     def _init_db(self):
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS factor_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +66,7 @@ class ICMonitor:
                  signal_strength: Optional[float] = None):
         today = datetime.now().strftime("%Y-%m-%d")
         try:
-            conn = sqlite3.connect(str(self._db_path))
+            conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
             conn.execute(
                 """INSERT OR REPLACE INTO factor_snapshots (factor_name, factor_value, signal_strength, snapshot_date)
                    VALUES (?, ?, ?, ?)""",
@@ -82,7 +84,7 @@ class ICMonitor:
     def compute_ic(self, factor_name: str, price_df: pd.DataFrame,
                    forward_days: int = 5, window: int = 60) -> Optional[Dict[str, Any]]:
         """计算因子 IC（Rank IC，即 Spearman 相关系数）"""
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         snapshots = pd.read_sql_query(
             "SELECT snapshot_date, factor_value FROM factor_snapshots WHERE factor_name = ? ORDER BY snapshot_date",
             conn, params=(factor_name,)
@@ -149,7 +151,7 @@ class ICMonitor:
             return "decayed"
 
     def _save_ic(self, factor_name: str, ic: float, window: int):
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.execute(
             "INSERT INTO ic_records (factor_name, ic_value, ic_window, computed_at) VALUES (?, ?, ?, ?)",
             (factor_name, ic, window, datetime.now().isoformat())
@@ -158,7 +160,7 @@ class ICMonitor:
         conn.close()
 
     def get_ic_history(self, factor_name: str, days: int = 90) -> List[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """SELECT * FROM ic_records WHERE factor_name = ?
@@ -170,7 +172,7 @@ class ICMonitor:
 
     def get_decay_status(self, factor_name: str) -> Optional[Dict[str, Any]]:
         """获取因子衰减状态：对比近期 IC vs 历史 IC"""
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
 
         recent = conn.execute(

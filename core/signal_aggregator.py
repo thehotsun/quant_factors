@@ -2,6 +2,9 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 import yaml
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _load_correlation_groups() -> Dict[str, Any]:
@@ -25,6 +28,10 @@ class SignalAggregator:
     def _dedup_correlated(cls, signals: List[Dict]) -> List[Dict]:
         """对高度相关的信号进行降权去重"""
         if len(signals) <= 1:
+            return signals
+
+        if not cls.CORRELATION_GROUPS:
+            logger.debug("correlation_groups 未配置，相关性去重未生效")
             return signals
 
         trigger_to_idx = {}

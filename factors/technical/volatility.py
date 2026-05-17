@@ -93,22 +93,20 @@ class VolatilityFactor(BaseFactor):
             return None
 
         if regime == "高波动" and ratio and ratio > 2.0:
-            confidence = self.params.get("high_vol_confidence", 0.50)
             return self._make_signal(
-                asset=self.symbol, direction="SELL",
-                reason=f"波动率比{ratio:.1f}>2.0，极端高波动→均值回归预期",
-                holding_days=5, stop_loss=-0.02, confidence=confidence,
-                strength=-0.5, trigger="vol_extreme_high",
+                asset=self.symbol, direction="HOLD",
+                reason=f"波动率比{ratio:.1f}>2.0，极端高波动→波动率回归预期，方向不确定",
+                holding_days=5, stop_loss=-0.02, confidence=0.50,
+                strength=0.0, trigger="vol_extreme_high",
                 vol_regime=regime, vol_ratio=ratio,
             )
 
         if regime == "低波动" and ratio and ratio < 0.3:
-            confidence = self.params.get("low_vol_confidence", 0.45)
             return self._make_signal(
-                asset=self.symbol, direction="BUY",
-                reason=f"波动率比{ratio:.1f}<0.3，极端低波动→突破预期",
-                holding_days=5, stop_loss=-0.02, confidence=confidence,
-                strength=0.4, trigger="vol_extreme_low",
+                asset=self.symbol, direction="HOLD",
+                reason=f"波动率比{ratio:.1f}<0.3，极端低波动→突破预期，方向不确定",
+                holding_days=5, stop_loss=-0.02, confidence=0.45,
+                strength=0.0, trigger="vol_extreme_low",
                 vol_regime=regime, vol_ratio=ratio,
             )
         return None

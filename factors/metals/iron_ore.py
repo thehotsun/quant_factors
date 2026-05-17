@@ -46,7 +46,7 @@ class IronOreFactor(BaseFactor):
             result["iron_ore_price"] = iron_current
 
             if len(iron_df) >= 5:
-                iron_5d_ago = self._safe_float(iron_df.iloc[-5], -1)
+                iron_5d_ago = self._safe_float(iron_df.tail(5), -5)
                 result["iron_ore_change_5d"] = self._pct_change(iron_current, iron_5d_ago)
 
             if len(iron_df) >= 60:

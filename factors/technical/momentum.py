@@ -117,22 +117,24 @@ class MomentumFactor(BaseFactor):
             confidence = 0.40
 
         if score > 0.5:
+            strength = max(-1.0, min(1.0, score * confidence / 0.55))
             return self._make_signal(
                 asset=self.symbol, direction="BUY",
                 reason=f"动量得分{score:.2f}>0.5，多周期共振向上（{vol_regime}）",
                 holding_days=10, stop_loss=-0.03, confidence=confidence,
-                strength=score * confidence / 0.55, trigger="momentum_strong",
+                strength=strength, trigger="momentum_strong",
                 momentum_5d=data.get("momentum_5d"),
                 momentum_20d=data.get("momentum_20d"),
                 momentum_score=score, volatility_regime=vol_regime,
             )
 
         if score < -0.5:
+            strength = max(-1.0, min(1.0, score * confidence / 0.55))
             return self._make_signal(
                 asset=self.symbol, direction="SELL",
                 reason=f"动量得分{score:.2f}<-0.5，多周期共振向下（{vol_regime}）",
                 holding_days=10, stop_loss=-0.03, confidence=confidence,
-                strength=score * confidence / 0.55, trigger="momentum_weak",
+                strength=strength, trigger="momentum_weak",
                 momentum_5d=data.get("momentum_5d"),
                 momentum_20d=data.get("momentum_20d"),
                 momentum_score=score, volatility_regime=vol_regime,

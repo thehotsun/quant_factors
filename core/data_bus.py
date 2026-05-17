@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Dict, Optional
 import logging
+import threading
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -10,15 +11,25 @@ class DataBus:
     """单例数据中心：统一加载+缓存，所有因子共享，避免重复 I/O"""
     _instance: Optional["DataBus"] = None
 
+    _CHINESE_FUTURES = {
+        "pork_futures", "pork_futures_far", "egg_futures",
+        "soybean_meal_futures", "corn_futures", "soybean_domestic_futures",
+        "soybean_import_futures", "rapeseed_meal_futures", "soybean_oil_futures",
+        "crude_oil_futures", "thermal_coal_futures",
+        "copper_futures", "aluminum_futures", "rebar_futures",
+        "gold_futures", "silver_futures", "iron_ore_futures",
+    }
+
     def __new__(cls, data_dir: str = "./data"):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._data_dir = Path(data_dir)
             cls._instance._cache = {}
+            cls._instance._lock = threading.Lock()
         elif str(cls._instance._data_dir) != str(Path(data_dir)):
-            logger.warning(
+            raise RuntimeError(
                 f"DataBus 已用 data_dir={cls._instance._data_dir} 初始化，"
-                f"忽略新参数 data_dir={data_dir}"
+                f"不能切换为 data_dir={data_dir}。请先调用 DataBus.reset() 重置。"
             )
         return cls._instance
 
@@ -31,14 +42,52 @@ class DataBus:
     def get(self, name: str, date_col: str = 'date') -> Optional[pd.DataFrame]:
         if name in self._cache:
             return self._cache[name]
-        path = self._data_dir / f"{name}.parquet"
-        if not path.exists():
-            return None
-        df = pd.read_parquet(path)
-        if date_col in df.columns:
-            df[date_col] = pd.to_datetime(df[date_col])
-            df = df.sort_values(date_col)
-        self._cache[name] = df
+        with self._lock:
+            if name in self._cache:
+                return self._cache[name]
+            path = self._data_dir / f"{name}.parquet"
+            if not path.exists():
+                return None
+            df = pd.read_parquet(path)
+            if date_col in df.columns:
+                df[date_col] = pd.to_datetime(df[date_col])
+                df = df.sort_values(date_col)
+            if 'close' in df.columns and name in self._CHINESE_FUTURES:
+                df = self._adjust_roll_gap(df)
+            self._cache[name] = df
+            return df
+
+    @staticmethod
+    def _adjust_roll_gap(df: pd.DataFrame) -> pd.DataFrame:
+        close = df['close'].astype(float)
+        daily_returns = close.pct_change()
+
+        if len(daily_returns) >= 20:
+            rolling_std = daily_returns.rolling(20, min_periods=10).std()
+            is_roll_gap = daily_returns.abs() > (rolling_std * 5)
+        else:
+            threshold = abs(close.median()) * 0.08
+            is_roll_gap = daily_returns.abs() > threshold
+
+        adjusted = close.copy()
+        cumulative_adj = 0.0
+        roll_count = 0
+        for i in range(1, len(close)):
+            if is_roll_gap.iloc[i]:
+                gap_amount = close.iloc[i] - adjusted.iloc[i - 1]
+                cumulative_adj += gap_amount
+                roll_count += 1
+            adjusted.iloc[i] = close.iloc[i] - cumulative_adj
+
+        if roll_count > 0:
+            logger.info(
+                f"换月跳空调整: 检测到 {roll_count} 次跳空, "
+                f"累计调整 {cumulative_adj:.2f}, 数据量 {len(close)}"
+            )
+
+        df = df.copy()
+        df['close_raw'] = close
+        df['close'] = adjusted
         return df
 
     def invalidate(self, name: str = None):

@@ -1,9 +1,11 @@
 import akshare as ak
 import pandas as pd
 from pathlib import Path
+import os
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
+
 
 def save_parquet(df, name):
     if df is None or df.empty:
@@ -13,11 +15,15 @@ def save_parquet(df, name):
         df.rename(columns={'日期': 'date'}, inplace=True)
     if '月份' in df.columns:
         df.rename(columns={'月份': 'date'}, inplace=True)
+    if '收盘' in df.columns:
+        df.rename(columns={'收盘': 'close'}, inplace=True)
     if 'date' in df.columns:
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date')
     file_path = DATA_DIR / f"{name}.parquet"
-    df.to_parquet(file_path, index=False)
+    tmp_path = DATA_DIR / f"{name}.parquet.tmp"
+    df.to_parquet(tmp_path, index=False)
+    os.replace(tmp_path, file_path)
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")
 
 
@@ -36,10 +42,7 @@ def main():
         print(f"  生猪远月下载失败: {e}")
 
     print("2. 布伦特原油")
-    oil = ak.energy_oil_hist()
-    if '日期' in oil.columns:
-        oil.rename(columns={'日期': 'date', '收盘': 'close'}, inplace=True)
-    save_parquet(oil, "brent_oil")
+    save_parquet(ak.energy_oil_hist(), "brent_oil")
 
     save_parquet(ak.macro_usa_cpi(), "us_cpi")
 

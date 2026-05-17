@@ -59,11 +59,7 @@ class MoneySupplyFactor(BaseFactor):
 
         if len(df) >= 6:
             recent = df.tail(6)
-            vals = []
-            for _, row in recent.iterrows():
-                v = self._safe_float(pd.DataFrame([row]), 0, col=col)
-                if v is not None:
-                    vals.append(v)
+            vals = recent[col].astype(float).dropna().tolist()
             if len(vals) >= 3:
                 if vals[-1] > vals[-2] > vals[-3]:
                     result["trend"] = "加速上行"

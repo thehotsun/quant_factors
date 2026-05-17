@@ -73,14 +73,14 @@ class TermStructureFactor(BaseFactor):
                 result["structure"] = "FLAT"
 
         if len(near_df) >= 60 and len(far_df) >= 60:
-            near_series = near_df['close'].astype(float)
-            far_series = far_df['close'].astype(float)
-            min_len = min(len(near_series), len(far_series))
-            spreads = []
-            for i in range(max(0, min_len - 60), min_len):
-                spreads.append(float(near_series.iloc[i]) - float(far_series.iloc[i]))
-            if spreads:
-                spread_series = pd.Series(spreads)
+            merged = pd.merge(
+                near_df[['date', 'close']].rename(columns={'close': 'near'}),
+                far_df[['date', 'close']].rename(columns={'close': 'far'}),
+                on='date', how='inner'
+            )
+            if len(merged) >= 20:
+                merged['spread'] = merged['near'] - merged['far']
+                spread_series = merged['spread'].tail(60)
                 result["spread_ma20"] = round(float(spread_series.tail(20).mean()), 2)
                 result["spread_percentile"] = round(self._percentile(spread, spread_series) * 100, 1)
 

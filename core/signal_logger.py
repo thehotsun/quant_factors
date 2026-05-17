@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
+SQLITE_TIMEOUT = 10
+
 
 class SignalLogger:
     """信号落库：SQLite 记录每次因子信号，支持回溯复盘"""
@@ -27,7 +29,7 @@ class SignalLogger:
 
     def _init_db(self):
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS signals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +44,15 @@ class SignalLogger:
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS signal_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                factor_name TEXT NOT NULL,
+                has_signal INTEGER DEFAULT 0,
+                run_date TEXT NOT NULL,
+                UNIQUE(factor_name, run_date)
+            )
+        """)
+        conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_signals_factor ON signals(factor_name, created_at)
         """)
         conn.commit()
@@ -49,10 +60,27 @@ class SignalLogger:
 
     def log(self, factor_name: str, signal: Optional[Dict[str, Any]],
             strength: Optional[float] = None, factor_data: Any = None):
+        today = datetime.now().strftime("%Y-%m-%d")
+        try:
+            conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
+            conn.execute(
+                """INSERT OR REPLACE INTO signal_runs (factor_name, has_signal, run_date)
+                   VALUES (?, ?, ?)""",
+                (factor_name, 1 if signal is not None else 0, today)
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"运行记录落库失败 factor={factor_name}: {e}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
         if signal is None:
             return
         try:
-            conn = sqlite3.connect(str(self._db_path))
+            conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
             conn.execute(
                 """INSERT INTO signals (factor_name, direction, strength, confidence, reason, asset, factor_data, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -78,7 +106,7 @@ class SignalLogger:
 
     def query(self, factor_name: str = None, days: int = 30,
               limit: int = 100) -> List[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
         sql = "SELECT * FROM signals WHERE 1=1"
         params = []
@@ -95,7 +123,7 @@ class SignalLogger:
         return [dict(r) for r in rows]
 
     def stats(self, factor_name: str = None, days: int = 90) -> Dict[str, Any]:
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
         where = ""
         params = []

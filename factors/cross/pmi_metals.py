@@ -36,8 +36,8 @@ class PMIMetalsLink(BaseFactor):
     def calculate(self) -> Dict[str, Any]:
         result = {
             "pmi": None, "pmi_change": None, "expansion": None,
-            "copper_price": None, "copper_change_5d": None,
-            "aluminum_price": None, "aluminum_change_5d": None,
+            "copper_price": None, "copper_change_20d": None,
+            "aluminum_price": None, "aluminum_change_20d": None,
         }
 
         pmi_df = self.load("pmi")
@@ -56,16 +56,16 @@ class PMIMetalsLink(BaseFactor):
         if copper_df is not None:
             cp = self._safe_float(copper_df.tail(1), -1)
             result["copper_price"] = cp
-            if len(copper_df) >= 5:
-                cp5 = self._safe_float(copper_df.tail(5), -5)
-                result["copper_change_5d"] = self._pct_change(cp, cp5)
+            if len(copper_df) >= 20:
+                cp20 = self._safe_float(copper_df.tail(20), -20)
+                result["copper_change_20d"] = self._pct_change(cp, cp20)
 
         if aluminum_df is not None:
             ap = self._safe_float(aluminum_df.tail(1), -1)
             result["aluminum_price"] = ap
-            if len(aluminum_df) >= 5:
-                ap5 = self._safe_float(aluminum_df.tail(5), -5)
-                result["aluminum_change_5d"] = self._pct_change(ap, ap5)
+            if len(aluminum_df) >= 20:
+                ap20 = self._safe_float(aluminum_df.tail(20), -20)
+                result["aluminum_change_20d"] = self._pct_change(ap, ap20)
 
         return result
 
@@ -73,7 +73,7 @@ class PMIMetalsLink(BaseFactor):
         data = self._get_or_calculate()
         pmi = data.get("pmi")
         pmi_change = data.get("pmi_change")
-        copper_change = data.get("copper_change_5d")
+        copper_change = data.get("copper_change_20d")
 
         if pmi is None:
             return None
@@ -84,7 +84,7 @@ class PMIMetalsLink(BaseFactor):
                 reason=f"PMI={pmi}加速扩张(+{pmi_change})但铜仅涨{copper_change*100:.1f}%，需求预期未充分定价→铜补涨",
                 holding_days=15, stop_loss=-0.03, confidence=0.60,
                 strength=0.60, trigger="pmi_copper_divergence",
-                pmi=pmi, pmi_change=pmi_change, copper_change_5d=copper_change,
+                pmi=pmi, pmi_change=pmi_change, copper_change_20d=copper_change,
             )
 
         if pmi < 49 and pmi_change is not None and pmi_change < -0.5:

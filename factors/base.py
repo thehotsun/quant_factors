@@ -52,7 +52,7 @@ class BaseFactor(ABC):
     def _zscore(self, value: float, series: pd.Series) -> float:
         mean = series.mean()
         std = series.std()
-        if std == 0:
+        if std == 0 or np.isnan(std):
             return 0.0
         return (value - mean) / std
 
@@ -68,6 +68,8 @@ class BaseFactor(ABC):
         if cache_key in self._threshold_cache:
             return self._threshold_cache[cache_key]
         vol = series.pct_change().std()
+        if np.isnan(vol):
+            return base
         adjustment = 1.0 + max(0.0, (vol - 0.01) * vol_sensitivity)
         result = base * adjustment
         self._threshold_cache[cache_key] = result

@@ -82,14 +82,14 @@ class SilverFactor(BaseFactor):
 
             min_len = min(len(silver_df), len(gold_df))
             if min_len >= 60:
-                ratios = []
-                for i in range(max(0, min_len - 60), min_len):
-                    gp = float(gold_df['close'].iloc[i])
-                    sp = float(silver_df['close'].iloc[i])
-                    if sp > 0:
-                        ratios.append(gp / sp)
-                if ratios:
-                    ratio_series = pd.Series(ratios)
+                merged = pd.merge(
+                    silver_df[['date', 'close']].rename(columns={'close': 'silver'}),
+                    gold_df[['date', 'close']].rename(columns={'close': 'gold'}),
+                    on='date', how='inner'
+                )
+                if len(merged) >= 20:
+                    merged['ratio'] = merged['gold'] / merged['silver']
+                    ratio_series = merged['ratio'].tail(60)
                     result["ratio_percentile"] = round(
                         self._percentile(result["gold_silver_ratio"], ratio_series) * 100, 1
                     )

@@ -73,6 +73,15 @@ class RapeseedMealFactor(BaseFactor):
                 strength=0.5, trigger="meal_rapeseed_substitution",
                 spread=data.get("meal_rapeseed_spread"), ratio=ratio,
             )
+
+        if ratio is not None and ratio < 0.9:
+            return self._make_signal(
+                asset="菜粕期货(RM)", direction="SELL",
+                reason=f"豆粕/菜粕比{ratio:.1f}<0.9，菜粕相对高估→替代需求减少",
+                holding_days=5, stop_loss=-0.02, confidence=0.50,
+                strength=-0.5, trigger="rapeseed_overvalued",
+                spread=data.get("meal_rapeseed_spread"), ratio=ratio,
+            )
         return None
 
     def signal_strength(self) -> float:
@@ -82,4 +91,6 @@ class RapeseedMealFactor(BaseFactor):
             return 0.0
         if ratio > 1.3:
             return min(1.0, (ratio - 1.3) / 0.5)
+        if ratio < 0.9:
+            return max(-1.0, (ratio - 0.9) / 0.5)
         return 0.0

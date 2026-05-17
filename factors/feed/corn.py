@@ -61,8 +61,9 @@ class CornFactor(BaseFactor):
         change = data.get("daily_change")
         zscore = data.get("zscore_20d")
         threshold = data.get("adaptive_threshold", 0.02)
+        zscore_threshold = self.params.get("zscore_threshold", 2.0)
 
-        if zscore is not None and zscore <= -2.0:
+        if zscore is not None and zscore <= -zscore_threshold:
             return self._make_signal(
                 asset="玉米期货(C)", direction="BUY",
                 reason=f"玉米Z-score={zscore:.1f}，极端低位→饲料核心原料超卖→反弹",

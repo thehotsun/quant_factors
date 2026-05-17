@@ -55,25 +55,21 @@ class PigGrainRatio(BaseFactor):
         if pork_price is None or corn_price is None or corn_price == 0:
             return result
 
-        corn_yuan_per_kg = corn_price / 1000
-        ratio = pork_price / corn_yuan_per_kg
+        ratio = pork_price / corn_price
 
         result["pork_price"] = pork_price
         result["corn_price"] = corn_price
         result["pig_grain_ratio"] = round(ratio, 2)
 
         if len(pork_df) >= 60 and len(corn_df) >= 60:
-            pork_series = pork_df['close'].astype(float)
-            corn_series = corn_df['close'].astype(float)
-            min_len = min(len(pork_series), len(corn_series))
-            ratios = []
-            for i in range(max(0, min_len - 60), min_len):
-                p = float(pork_series.iloc[i])
-                c = float(corn_series.iloc[i]) / 1000
-                if c > 0:
-                    ratios.append(p / c)
-            if ratios:
-                ratio_series = pd.Series(ratios)
+            merged = pd.merge(
+                pork_df[['date', 'close']].rename(columns={'close': 'pork'}),
+                corn_df[['date', 'close']].rename(columns={'close': 'corn'}),
+                on='date', how='inner'
+            )
+            if len(merged) >= 20:
+                merged['ratio'] = merged['pork'] / merged['corn']
+                ratio_series = merged['ratio'].tail(60)
                 result["ratio_ma20"] = round(float(ratio_series.tail(20).mean()), 2)
                 result["ratio_percentile"] = round(self._percentile(ratio, ratio_series) * 100, 1)
 
@@ -142,10 +138,13 @@ class PigGrainRatio(BaseFactor):
         ratio = data.get("pig_grain_ratio")
         if ratio is None:
             return 0.0
-        if ratio < 5.0:
-            return min(1.0, (5.0 - ratio) / 2.0 + 0.5)
-        if ratio < 6.0:
-            return max(0.0, (6.0 - ratio) / 2.0)
-        if ratio > 9.0:
-            return max(-1.0, -(ratio - 9.0) / 2.0)
+        level1 = data.get("adaptive_level1", self.BASE_WARNING_LEVEL1)
+        level2 = data.get("adaptive_level2", self.BASE_WARNING_LEVEL2)
+        normal_high = data.get("adaptive_normal_high", self.BASE_NORMAL_HIGH)
+        if ratio < level1:
+            return min(1.0, (level1 - ratio) / 2.0 + 0.5)
+        if ratio < level2:
+            return max(0.0, (level2 - ratio) / 2.0)
+        if ratio > normal_high:
+            return max(-1.0, -(ratio - normal_high) / 2.0)
         return 0.0

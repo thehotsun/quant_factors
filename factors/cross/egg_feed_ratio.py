@@ -15,6 +15,7 @@
 └─────────────────────────────────────────────────────────────────────┘
 """
 from typing import Optional, Dict, Any
+import pandas as pd
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
 
@@ -25,14 +26,15 @@ from core.factor_registry import FactorRegistry
     asset="鸡蛋期货(JD)", data_deps=["egg_futures", "corn_futures", "soybean_meal_futures"]
 )
 class EggFeedRatio(BaseFactor):
-    LOSS_THRESHOLD = 2.5
-    PROFIT_THRESHOLD = 3.5
+    BASE_LOSS_THRESHOLD = 2.5
+    BASE_PROFIT_THRESHOLD = 3.5
 
     def calculate(self) -> Dict[str, Any]:
         result = {
             "egg_feed_ratio": None, "egg_price": None, "feed_cost": None,
             "daily_change": None, "zscore_20d": None, "percentile_20d": None,
             "adaptive_threshold": None,
+            "adaptive_loss_threshold": None, "adaptive_profit_threshold": None,
         }
 
         egg_df = self.load("egg_futures")
@@ -63,10 +65,34 @@ class EggFeedRatio(BaseFactor):
             if corn_price and meal_price:
                 feed_cost_per_ton = corn_price * 0.60 + meal_price * 0.25 + 200
                 feed_cost_per_jin = feed_cost_per_ton / 2000
-                egg_price_per_jin = current / 2000
+                egg_price_per_jin = current / 500
                 ratio = egg_price_per_jin / feed_cost_per_jin if feed_cost_per_jin > 0 else None
                 result["feed_cost"] = round(feed_cost_per_ton, 2)
                 result["egg_feed_ratio"] = round(ratio, 2) if ratio else None
+
+            if len(egg_df) >= 60 and len(corn_df) >= 60 and len(meal_df) >= 60:
+                merged = pd.merge(
+                    egg_df[['date', 'close']].rename(columns={'close': 'egg'}),
+                    corn_df[['date', 'close']].rename(columns={'close': 'corn'}),
+                    on='date', how='inner'
+                )
+                merged = pd.merge(
+                    merged,
+                    meal_df[['date', 'close']].rename(columns={'close': 'meal'}),
+                    on='date', how='inner'
+                )
+                if len(merged) >= 20:
+                    merged['feed_cost_per_ton'] = merged['corn'] * 0.60 + merged['meal'] * 0.25 + 200
+                    merged['feed_cost_per_jin'] = merged['feed_cost_per_ton'] / 2000
+                    merged['egg_price_per_jin'] = merged['egg'] / 500
+                    merged['ratio'] = merged['egg_price_per_jin'] / merged['feed_cost_per_jin']
+                    ratio_series = merged['ratio'].tail(60)
+                    result["adaptive_loss_threshold"] = round(self._adaptive_threshold(
+                        "egg_feed_loss", self.BASE_LOSS_THRESHOLD, ratio_series, vol_sensitivity=20
+                    ), 2)
+                    result["adaptive_profit_threshold"] = round(self._adaptive_threshold(
+                        "egg_feed_profit", self.BASE_PROFIT_THRESHOLD, ratio_series, vol_sensitivity=20
+                    ), 2)
 
         return result
 
@@ -75,22 +101,24 @@ class EggFeedRatio(BaseFactor):
         ratio = data.get("egg_feed_ratio")
         change = data.get("daily_change")
         threshold = data.get("adaptive_threshold", 0.03)
+        loss_threshold = data.get("adaptive_loss_threshold", self.BASE_LOSS_THRESHOLD)
+        profit_threshold = data.get("adaptive_profit_threshold", self.BASE_PROFIT_THRESHOLD)
 
-        if ratio is not None and ratio < self.LOSS_THRESHOLD:
+        if ratio is not None and ratio < loss_threshold:
             return self._make_signal(
                 asset="鸡蛋期货(JD)", direction="BUY",
-                reason=f"蛋料比{ratio:.1f}<{self.LOSS_THRESHOLD}→养殖亏损→淘汰老鸡→供给收缩→蛋价反弹",
+                reason=f"蛋料比{ratio:.1f}<{loss_threshold:.1f}→养殖亏损→淘汰老鸡→供给收缩→蛋价反弹",
                 holding_days=15, stop_loss=-0.03, confidence=0.65,
-                strength=min(1.0, (self.LOSS_THRESHOLD - ratio) / 1.0 + 0.3),
+                strength=min(1.0, (loss_threshold - ratio) / 1.0 + 0.3),
                 trigger="egg_feed_loss", egg_feed_ratio=ratio,
             )
 
-        if ratio is not None and ratio > self.PROFIT_THRESHOLD:
+        if ratio is not None and ratio > profit_threshold:
             return self._make_signal(
                 asset="鸡蛋期货(JD)", direction="SELL",
-                reason=f"蛋料比{ratio:.1f}>{self.PROFIT_THRESHOLD}→养殖暴利→补栏扩产→供给增加→蛋价回落",
+                reason=f"蛋料比{ratio:.1f}>{profit_threshold:.1f}→养殖暴利→补栏扩产→供给增加→蛋价回落",
                 holding_days=15, stop_loss=-0.03, confidence=0.60,
-                strength=-min(1.0, (ratio - self.PROFIT_THRESHOLD) / 1.0 + 0.3),
+                strength=-min(1.0, (ratio - profit_threshold) / 1.0 + 0.3),
                 trigger="egg_feed_profit", egg_feed_ratio=ratio,
             )
 
@@ -108,12 +136,14 @@ class EggFeedRatio(BaseFactor):
         data = self._get_or_calculate()
         ratio = data.get("egg_feed_ratio")
         zscore = data.get("zscore_20d")
+        loss_threshold = data.get("adaptive_loss_threshold", self.BASE_LOSS_THRESHOLD)
+        profit_threshold = data.get("adaptive_profit_threshold", self.BASE_PROFIT_THRESHOLD)
         if ratio is None:
             return 0.0
-        if ratio < self.LOSS_THRESHOLD:
-            return min(1.0, (self.LOSS_THRESHOLD - ratio) / 1.0 + 0.3)
-        if ratio > self.PROFIT_THRESHOLD:
-            return max(-1.0, -(ratio - self.PROFIT_THRESHOLD) / 1.0 - 0.3)
+        if ratio < loss_threshold:
+            return min(1.0, (loss_threshold - ratio) / 1.0 + 0.3)
+        if ratio > profit_threshold:
+            return max(-1.0, -(ratio - profit_threshold) / 1.0 - 0.3)
         if zscore is not None:
             return zscore / 3.0
         return 0.0

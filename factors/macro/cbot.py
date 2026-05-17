@@ -69,12 +69,30 @@ class CbotSoybeanFactor(BaseFactor):
                 cbot_soybean=data.get("cbot_soybean"), daily_change=change,
             )
 
+        if change is not None and change <= -0.03:
+            return self._make_signal(
+                asset="豆粕期货(M)", direction="SELL",
+                reason=f"CBOT大豆单日下跌{abs(change)*100:.1f}%，进口成本下降→豆粕承压",
+                holding_days=5, stop_loss=-0.02, confidence=0.55,
+                strength=-0.55, trigger="cbot_soybean_plunge",
+                cbot_soybean=data.get("cbot_soybean"), daily_change=change,
+            )
+
         if zscore is not None and zscore > 2.0:
             return self._make_signal(
                 asset="豆粕期货(M)", direction="BUY",
                 reason=f"CBOT大豆处于{zscore:.1f}σ高位，全球大豆偏紧",
                 holding_days=10, stop_loss=-0.03, confidence=0.60,
                 strength=0.60, trigger="cbot_soybean_high_zscore",
+                cbot_soybean=data.get("cbot_soybean"), zscore=zscore,
+            )
+
+        if zscore is not None and zscore < -2.0:
+            return self._make_signal(
+                asset="豆粕期货(M)", direction="SELL",
+                reason=f"CBOT大豆处于{zscore:.1f}σ低位，全球大豆供应宽松",
+                holding_days=10, stop_loss=-0.03, confidence=0.60,
+                strength=-0.60, trigger="cbot_soybean_low_zscore",
                 cbot_soybean=data.get("cbot_soybean"), zscore=zscore,
             )
         return None

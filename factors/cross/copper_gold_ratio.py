@@ -56,14 +56,14 @@ class CopperGoldRatio(BaseFactor):
 
         min_len = min(len(copper_df), len(gold_df))
         if min_len >= 60:
-            ratios = []
-            for i in range(min_len):
-                cp = float(copper_df['close'].iloc[i])
-                gp = float(gold_df['close'].iloc[i])
-                if gp > 0:
-                    ratios.append(cp / gp)
-            if ratios:
-                ratio_series = pd.Series(ratios)
+            merged = pd.merge(
+                copper_df[['date', 'close']].rename(columns={'close': 'copper'}),
+                gold_df[['date', 'close']].rename(columns={'close': 'gold'}),
+                on='date', how='inner'
+            )
+            if len(merged) >= 20:
+                merged['ratio'] = merged['copper'] / merged['gold']
+                ratio_series = merged['ratio'].tail(60)
                 result["ratio_ma20"] = round(float(ratio_series.tail(20).mean()), 4)
                 result["ratio_percentile"] = round(self._percentile(ratio, ratio_series) * 100, 1)
                 result["ratio_zscore"] = round(self._zscore(ratio, ratio_series), 2)
