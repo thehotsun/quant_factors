@@ -25,7 +25,15 @@ def save_parquet(df, name):
     if '收盘' in df.columns:
         df.rename(columns={'收盘': 'close'}, inplace=True)
     if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'])
+        # 处理各种日期格式
+        date_str = df['date'].astype(str)
+        if date_str.str.contains('年').any():
+            # 中文格式: "2026年04月份"
+            df['date'] = date_str.str.replace(r'年|月份?', '-', regex=True).str.rstrip('-')
+        elif date_str.str.match(r'^\d{6}$').all():
+            # YYYYMM格式: "201501"
+            df['date'] = date_str + '01'  # 补充日期为01
+        df['date'] = pd.to_datetime(df['date'], format='mixed')
         df = df.sort_values('date')
     file_path = DATA_DIR / f"{name}.parquet"
     tmp_path = DATA_DIR / f"{name}.parquet.tmp"
