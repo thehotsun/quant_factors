@@ -634,7 +634,13 @@ def _init_scheduler():
         logger.error("APScheduler 未安装，定时任务不可用。请执行: pip install apscheduler")
         raise SystemExit(1)
 
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(
+        job_defaults={
+            'misfire_grace_time': 7200,   # 错过2小时内仍补执行
+            'coalesce': True,             # 合并错过的执行，只跑一次
+            'max_instances': 1,           # 同一任务不并发
+        }
+    )
     scheduler.add_job(_daily_data_refresh, 'cron', hour=18, minute=0, id='daily_refresh')
     scheduler.add_job(_daily_data_refresh_foreign, 'cron', hour=6, minute=0, id='daily_refresh_foreign')
     scheduler.add_job(_daily_ic_compute, 'cron', hour=18, minute=30, id='daily_ic')
