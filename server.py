@@ -483,7 +483,7 @@ def _daily_data_refresh():
     """定时任务：每日数据刷新（国内品种，18:00执行）"""
     logger.info("开始每日数据刷新（国内品种）...")
     try:
-        from download_history import save_parquet, fetch_tushare_futures
+        from download_history import save_parquet, fetch_tushare_futures, fetch_pboc_social_financing
 
         tasks = [
             ("生猪期货", lambda: fetch_tushare_futures("LH.DCE", "生猪期货"), "pork_futures"),
@@ -506,7 +506,7 @@ def _daily_data_refresh():
             ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
             ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
             ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
-            ("社融规模", lambda: ak.macro_china_shrzgm(), "social_financing"),
+            ("社融规模", lambda: fetch_pboc_social_financing() or ak.macro_china_shrzgm(), "social_financing"),
         ]
 
         failed = 0
