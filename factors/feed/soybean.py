@@ -59,7 +59,7 @@ class SoybeanFactor(BaseFactor):
 
         forex_df = self.load("usd_cny")
         if forex_df is not None and len(forex_df) >= 1:
-            col = 'close' if 'close' in forex_df.columns else 'value'
+            col = 'close' if 'close' in forex_df.columns else ('DEXCHUS' if 'DEXCHUS' in forex_df.columns else 'value')
             result["usd_cny"] = self._safe_float(forex_df.tail(1), -1, col=col)
 
         cbot = result.get("cbot_soybean")

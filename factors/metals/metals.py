@@ -404,7 +404,7 @@ class GoldFactor(BaseFactor):
 
         forex_df = self.load("usd_cny")
         if forex_df is not None and len(forex_df) >= 20:
-            col = 'close' if 'close' in forex_df.columns else 'value'
+            col = 'close' if 'close' in forex_df.columns else ('DEXCHUS' if 'DEXCHUS' in forex_df.columns else 'value')
             if col in forex_df.columns:
                 result["usd_cny"] = self._safe_float(forex_df.tail(1), -1, col=col)
                 forex_20d = self._safe_float(forex_df.tail(20), -20, col=col)

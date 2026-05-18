@@ -49,7 +49,7 @@ class ForexCommodityLink(BaseFactor):
         if forex_df is None:
             return result
 
-        col = 'close' if 'close' in forex_df.columns else 'value'
+        col = 'close' if 'close' in forex_df.columns else ('DEXCHUS' if 'DEXCHUS' in forex_df.columns else 'value')
         usd_cny = self._safe_float(forex_df.tail(1), -1, col=col)
         result["usd_cny"] = usd_cny
 

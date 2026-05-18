@@ -597,34 +597,35 @@ def _daily_ic_compute():
 def _daily_push():
     """定时任务：每日推送分析结论（18:35执行，在数据刷新和IC计算之后）"""
     logger.info("开始每日分析推送...")
-    composite_chains = [
-        name for name, cfg in CHAINS_CONFIG.items()
-        if cfg.get("category") == "composite"
-    ]
+    with app.app_context():
+        composite_chains = [
+            name for name, cfg in CHAINS_CONFIG.items()
+            if cfg.get("category") == "composite"
+        ]
 
-    if not composite_chains:
-        logger.warning("未配置综合链条，跳过推送")
-        return
+        if not composite_chains:
+            logger.warning("未配置综合链条，跳过推送")
+            return
 
-    push_mgr = get_push_manager()
-    success_count = 0
-    for chain_name in composite_chains:
-        try:
-            result = _run_composite_chain(chain_name)
-            if hasattr(result, 'get_json'):
-                result_data = result.get_json()
-            else:
-                import json as _json
-                result_data = _json.loads(result.get_data(as_text=True))
-            content = format_signal_report(result_data)
-            title = f"量化分析日报 - {chain_name}"
-            push_result = push_mgr.send(title, content)
-            if any(push_result.values()):
-                success_count += 1
-        except Exception as e:
-            logger.error(f"推送 {chain_name} 失败: {e}")
+        push_mgr = get_push_manager()
+        success_count = 0
+        for chain_name in composite_chains:
+            try:
+                result = _run_composite_chain(chain_name)
+                if hasattr(result, 'get_json'):
+                    result_data = result.get_json()
+                else:
+                    import json as _json
+                    result_data = _json.loads(result.get_data(as_text=True))
+                content = format_signal_report(result_data)
+                title = f"量化分析日报 - {chain_name}"
+                push_result = push_mgr.send(title, content)
+                if any(push_result.values()):
+                    success_count += 1
+            except Exception as e:
+                logger.error(f"推送 {chain_name} 失败: {e}")
 
-    logger.info(f"每日推送完成: {success_count}/{len(composite_chains)} 个链条推送成功")
+        logger.info(f"每日推送完成: {success_count}/{len(composite_chains)} 个链条推送成功")
 
 
 def _init_scheduler():
