@@ -231,34 +231,9 @@ class AluminumFactor(BaseFactor):
 
     def signal(self) -> Optional[Dict[str, Any]]:
         data = self._get_or_calculate()
-        coal_change = data.get("coal_change_20d")
         zscore = data.get("zscore_20d")
-        pressure = data.get("energy_cost_pressure")
         yunnan = data.get("yunnan_hydro", "")
-
-        if coal_change is not None and coal_change > 0.10 and zscore is not None and zscore < 1.0:
-            extra = ""
-            confidence = 0.55
-            if "枯水期" in str(yunnan):
-                extra = "+云南枯水期限产→双重供给收缩"
-                confidence = 0.70
-            return self._make_signal(
-                asset="铝期货(AL)", direction="BUY",
-                reason=f"动力煤20日涨{coal_change*100:.1f}%→电力成本飙升{extra}→电解铝减产预期→铝价上涨",
-                holding_days=10, stop_loss=-0.02, confidence=confidence,
-                strength=confidence, trigger="coal_cost_surge",
-                coal_change_20d=coal_change, energy_cost_pressure=pressure,
-                yunnan_hydro=yunnan,
-            )
-
-        if coal_change is not None and coal_change < -0.10 and zscore is not None and zscore > -1.0:
-            return self._make_signal(
-                asset="铝期货(AL)", direction="SELL",
-                reason=f"动力煤20日跌{abs(coal_change)*100:.1f}%→电力成本大降→复产预期→铝价承压",
-                holding_days=10, stop_loss=-0.02, confidence=0.50,
-                strength=-0.50, trigger="coal_cost_collapse",
-                coal_change_20d=coal_change, energy_cost_pressure=pressure,
-            )
+        # 注：动力煤触发条件已移除（ZC合约受政策限价冻结在801.4，不再产生有效信号）
 
         if zscore is not None and zscore <= -2.0:
             extra = ""
@@ -278,13 +253,11 @@ class AluminumFactor(BaseFactor):
     def signal_strength(self) -> float:
         data = self._get_or_calculate()
         zscore = data.get("zscore_20d")
-        coal_change = data.get("coal_change_20d")
         hydro_strength = data.get("yunnan_hydro_strength", 0)
         if zscore is None:
             return 0.0
         strength = zscore / 3.0
-        if coal_change is not None and coal_change > 0.05:
-            strength += 0.3
+        # 注：动力煤贡献已移除（ZC合约受政策限价冻结）
         strength += hydro_strength
         return max(-1.0, min(1.0, strength))
 
