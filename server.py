@@ -534,13 +534,13 @@ def _daily_data_refresh_foreign():
     """定时任务：外盘数据刷新（次日06:00执行，确保外盘已收盘）"""
     logger.info("开始外盘数据刷新...")
     try:
-        from download_history import save_parquet, fetch_eia_crude_stock
+        from download_history import save_parquet, fetch_eia_crude_stock, fetch_brent_oil
 
         tasks = [
             ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
             ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
             ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
-            ("布伦特原油", lambda: ak.energy_oil_hist(), "brent_oil"),
+            ("布伦特原油", lambda: fetch_brent_oil() or ak.energy_oil_hist(), "brent_oil"),
             ("EIA原油库存", lambda: fetch_eia_crude_stock() or ak.macro_usa_eia_crude_rate(), "eia_crude_stock"),
             ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
         ]

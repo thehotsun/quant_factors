@@ -43,6 +43,25 @@ def save_parquet(df, name):
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")
 
 
+def fetch_brent_oil():
+    """从 FRED 下载布伦特原油价格（日度）"""
+    try:
+        url = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU&cosd=2020-01-01'
+        df = pd.read_csv(url)
+        df = df.rename(columns={'observation_date': 'date', 'DCOILBRENTEU': 'close'})
+        df['date'] = pd.to_datetime(df['date'])
+        # 替换 "." 为 NaN（FRED 用 "." 表示缺失）
+        df['close'] = pd.to_numeric(df['close'], errors='coerce')
+        df = df.dropna(subset=['close'])
+        df = df.sort_values('date')
+        df.reset_index(drop=True, inplace=True)
+        print(f"  布伦特原油(FRED): {len(df)} 条, {df['date'].min().date()} ~ {df['date'].max().date()}")
+        return df
+    except Exception as e:
+        print(f"  布伦特原油下载失败: {e}")
+        return None
+
+
 def fetch_eia_crude_stock():
     """从 EIA 官网下载美国原油库存周度数据（XLS 格式）"""
     try:
@@ -299,8 +318,12 @@ def main():
 
     print("22. 布伦特原油")
     try:
-        brent = ak.energy_oil_hist()
-        save_parquet(brent, "brent_oil")
+        brent = fetch_brent_oil()
+        if brent is not None:
+            save_parquet(brent, "brent_oil")
+        else:
+            brent = ak.energy_oil_hist()
+            save_parquet(brent, "brent_oil")
     except Exception as e:
         print(f"  布伦特原油下载失败: {e}")
 
