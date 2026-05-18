@@ -64,6 +64,33 @@ class DingTalkPush(PushChannel):
             return False
 
 
+class WebhookPush(PushChannel):
+    def __init__(self, url: str, auth_token: str = None, channel_id: str = None):
+        self._url = url
+        self._auth_token = auth_token
+        self._channel_id = channel_id
+
+    def send(self, title: str, content: str) -> bool:
+        try:
+            payload = {
+                "text": f"【量化日报】{title}\n\n{content}",
+                "channelId": self._channel_id or "quant",
+            }
+            headers = {"Content-Type": "application/json"}
+            if self._auth_token:
+                headers["Authorization"] = f"Bearer {self._auth_token}"
+            resp = requests.post(self._url, json=payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 202):
+                logger.info(f"Webhook 推送成功: {title}")
+                return True
+            else:
+                logger.error(f"Webhook 推送失败: {resp.status_code} {resp.text[:200]}")
+                return False
+        except Exception as e:
+            logger.error(f"Webhook 推送异常: {e}")
+            return False
+
+
 class FeishuPush(PushChannel):
     def __init__(self, webhook_url: str):
         self._webhook_url = webhook_url
@@ -202,6 +229,21 @@ def init_push_channels(config: Dict[str, Any] = None):
             if webhook:
                 manager.add_channel(DingTalkPush(webhook, secret))
                 logger.info(f"已配置钉钉推送: {webhook[:50]}...")
+        elif ch_type == "feishu":
+            webhook = ch_cfg.get("webhook_url", "")
+            if webhook:
+                manager.add_channel(FeishuPush(webhook))
+                logger.info(f"已配置飞书推送: {webhook[:50]}...")
+        elif ch_type == "webhook":
+            url = ch_cfg.get("url", "")
+            auth_token = ch_cfg.get("auth_token")
+            channel_id = ch_cfg.get("channel_id")
+            if url:
+                manager.add_channel(WebhookPush(url, auth_token, channel_id))
+                logger.info(f"已配置 Webhook 推送: {url[:50]}...")
+        elif ch_type == "console":
+            manager.add_channel(ConsolePush())
+            logger.info("已配置控制台输出")
         elif ch_type == "feishu":
             webhook = ch_cfg.get("webhook_url", "")
             if webhook:

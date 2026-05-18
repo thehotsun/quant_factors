@@ -14,6 +14,12 @@ channels:
   # 默认使用控制台输出（开发/测试环境）
   - type: console
 
+  # Webhook 推送到工作流引擎
+  - type: webhook
+    url: "http://localhost:3000/events/manual"
+    auth_token: ""
+    channel_id: "qqbot:c2c:671E406CE85706E91F0CF251BD7D8177"
+
   # 钉钉推送（生产环境取消注释并填入 webhook_url）
   # - type: dingtalk
   #   webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN"
