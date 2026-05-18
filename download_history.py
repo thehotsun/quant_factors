@@ -291,6 +291,9 @@ def main():
     print("26. QVIX波动率")
     try:
         vix = ak.index_option_300etf_qvix()
+        # QVIX 2019-12 才上线，过滤掉上线前的空行
+        if vix is not None and 'open' in vix.columns:
+            vix = vix.dropna(subset=['open', 'high', 'low', 'close'])
         save_parquet(vix, "vix")
     except Exception as e:
         print(f"  QVIX下载失败: {e}")
