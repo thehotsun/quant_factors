@@ -43,6 +43,44 @@ def save_parquet(df, name):
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")
 
 
+def fetch_eia_crude_stock():
+    """从 EIA 官网下载美国原油库存周度数据（XLS 格式）"""
+    try:
+        from io import BytesIO
+        url = 'https://ir.eia.gov/wpsr/psw04.xls'
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        r = requests.get(url, headers=headers, timeout=30)
+        r.raise_for_status()
+
+        df = pd.read_excel(BytesIO(r.content), sheet_name='Data 1', header=None)
+        # Row 1 = sourcekey, Row 2 = description, Data starts from Row 3
+        # Column 0 = Date, Column 1 = WCESTUS1 (Weekly U.S. Ending Stocks of Crude Oil)
+        # Column 2 = WCESTP11 (Ending Stocks excluding SPR)
+        records = []
+        for i in range(3, len(df)):
+            date_val = df.iloc[i, 0]
+            total_stocks = df.iloc[i, 1]  # Total including SPR
+            commercial = df.iloc[i, 2]    # Excluding SPR
+            if pd.isna(date_val) or pd.isna(total_stocks):
+                continue
+            records.append({
+                'date': pd.to_datetime(date_val),
+                'total_stocks_kb': float(total_stocks),
+                'commercial_stocks_kb': float(commercial) if pd.notna(commercial) else None,
+            })
+
+        result = pd.DataFrame(records)
+        result = result.sort_values('date')
+        result.reset_index(drop=True, inplace=True)
+        # 计算变化率（周环比）
+        result['weekly_change'] = result['commercial_stocks_kb'].diff()
+        print(f"  EIA原油库存: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        return result
+    except Exception as e:
+        print(f"  EIA原油库存下载失败: {e}")
+        return None
+
+
 def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
     """从 FRED 直接下载 CSV 数据"""
     try:
@@ -283,8 +321,13 @@ def main():
 
     print("25. EIA原油库存")
     try:
-        eia = ak.macro_usa_eia_crude_rate()
-        save_parquet(eia, "eia_crude_stock")
+        eia = fetch_eia_crude_stock()
+        if eia is not None:
+            save_parquet(eia, "eia_crude_stock")
+        else:
+            # 回退到 AKShare
+            eia = ak.macro_usa_eia_crude_rate()
+            save_parquet(eia, "eia_crude_stock")
     except Exception as e:
         print(f"  EIA库存下载失败: {e}")
 
