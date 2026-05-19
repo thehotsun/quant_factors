@@ -617,7 +617,7 @@ def _daily_push():
                 else:
                     import json as _json
                     result_data = _json.loads(result.get_data(as_text=True))
-                content = format_signal_report(result_data)
+                content = format_signal_report(result_data, _data_bus)
                 title = f"量化分析日报 - {chain_name}"
                 push_result = push_mgr.send(title, content)
                 if any(push_result.values()):
@@ -687,7 +687,7 @@ def push_chain(chain_name):
         import json as _json
         result_data = _json.loads(result.get_data(as_text=True))
 
-    content = format_signal_report(result_data)
+    content = format_signal_report(result_data, _data_bus)
     title = f"量化分析 - {chain_name}"
     push_mgr = get_push_manager()
     push_result = push_mgr.send(title, content)

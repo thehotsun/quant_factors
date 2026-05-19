@@ -144,7 +144,55 @@ class PushManager:
         return results
 
 
-def format_signal_report(composite_results: Dict[str, Any]) -> str:
+# 综合链条 → 关键品种（data_dep, 显示名）
+_KEY_ASSETS = {
+    'full_meat_chain': [
+        ('pork_futures', '生猪'), ('soybean_meal_futures', '豆粕'),
+        ('corn_futures', '玉米'), ('egg_futures', '鸡蛋'),
+        ('soybean_oil_futures', '豆油'),
+    ],
+    'energy_chain': [
+        ('crude_oil_futures', '原油'), ('natural_gas_futures', '天然气'),
+        ('gold_futures', '黄金'), ('usd_cny', '美元/人民币'),
+    ],
+    'metals_chain': [
+        ('copper_futures', '铜'), ('aluminum_futures', '铝'),
+        ('rebar_futures', '螺纹钢'), ('gold_futures', '黄金'),
+        ('silver_futures', '白银'), ('iron_ore_futures', '铁矿石'),
+    ],
+    'macro_chain': [
+        ('usd_cny', '美元/人民币'), ('gold_futures', '黄金'),
+        ('copper_futures', '铜'), ('crude_oil_futures', '原油'),
+    ],
+}
+
+
+def _get_price_trend(data_bus, data_dep: str, days: int = 5) -> Optional[list]:
+    """获取最近 N 天的收盘价列表"""
+    try:
+        df = data_bus.get(data_dep)
+        if df is None or df.empty or 'close' not in df.columns:
+            return None
+        recent = df.tail(days)['close'].tolist()
+        if len(recent) < 2:
+            return None
+        return [float(x) for x in recent]
+    except Exception:
+        return None
+
+
+def _format_trend(prices: list) -> str:
+    """格式化价格趋势，带方向箭头"""
+    if not prices or len(prices) < 2:
+        return ""
+    arrow = "↑" if prices[-1] > prices[0] else ("↓" if prices[-1] < prices[0] else "→")
+    # 涨跌幅
+    pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
+    price_str = " → ".join(f"{p:.0f}" if abs(p) >= 100 else f"{p:.2f}" for p in prices)
+    return f"{price_str} {arrow} ({pct:+.1f}%)"
+
+
+def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> str:
     lines = []
     chain_name = composite_results.get("chain", "未知")
     description = composite_results.get("description", "")
@@ -164,6 +212,20 @@ def format_signal_report(composite_results: Dict[str, Any]) -> str:
         lines.append(f"信号数: {aggregated.get('signal_count', 0)} (BUY:{aggregated.get('buy_count', 0)} SELL:{aggregated.get('sell_count', 0)})")
     else:
         lines.append("⚪ 综合信号: HOLD（无有效信号）")
+
+    # 近5日价格趋势
+    if data_bus is not None:
+        key_assets = _KEY_ASSETS.get(chain_name, [])
+        trend_lines = []
+        for data_dep, label in key_assets:
+            prices = _get_price_trend(data_bus, data_dep)
+            if prices:
+                trend_str = _format_trend(prices)
+                trend_lines.append(f"- {label}: {trend_str}")
+        if trend_lines:
+            lines.append("")
+            lines.append("📊 **近5日价格:**")
+            lines.extend(trend_lines)
 
     if signals:
         lines.append("")
