@@ -145,22 +145,27 @@ class PushManager:
 
 
 # 综合链条 → 关键品种（data_dep, 显示名）
+# 每个链条只列最重要的，避免信息过载
 _KEY_ASSETS = {
     'full_meat_chain': [
-        ('pork_futures', '生猪'), ('egg_futures', '鸡蛋'),
+        ('pork_futures', '生猪'),       # 核心品种
+        ('egg_futures', '鸡蛋'),         # 替代品
+        ('soybean_meal_futures', '豆粕'), # 主要饲料成本
+        ('corn_futures', '玉米'),         # 主要饲料成本
     ],
     'energy_chain': [
-        ('crude_oil_futures', '原油'), ('natural_gas_futures', '天然气'),
-        ('usd_cny', '美元/人民币'),
+        ('crude_oil_futures', '原油'),     # 核心品种
+        ('natural_gas_futures', '天然气'), # 替代能源
     ],
     'metals_chain': [
-        ('gold_futures', '黄金'), ('silver_futures', '白银'),
-        ('copper_futures', '铜'), ('aluminum_futures', '铝'),
-        ('rebar_futures', '螺纹钢'), ('iron_ore_futures', '铁矿石'),
+        ('gold_futures', '黄金'),          # 必选
+        ('silver_futures', '白银'),        # 必选
+        ('copper_futures', '铜'),           # 经济晴雨表
+        ('iron_ore_futures', '铁矿石'),    # 螺纹钢成本核心
     ],
     'macro_chain': [
-        ('usd_cny', '美元/人民币'), ('copper_futures', '铜'),
-        ('crude_oil_futures', '原油'),
+        ('vix', 'VIX恐慌指数'),             # 风险情绪
+        ('usd_cny', '美元/人民币'),        # 汇率
     ],
 }
 
