@@ -144,25 +144,27 @@ class PushManager:
         return results
 
 
+# 贵金属：所有链条都显示
+_PRECIOUS_METALS = [
+    ('gold_futures', '黄金'), ('silver_futures', '白银'),
+]
+
 # 综合链条 → 关键品种（data_dep, 显示名）
 _KEY_ASSETS = {
     'full_meat_chain': [
-        ('pork_futures', '生猪'), ('soybean_meal_futures', '豆粕'),
-        ('corn_futures', '玉米'), ('egg_futures', '鸡蛋'),
-        ('soybean_oil_futures', '豆油'),
+        ('pork_futures', '生猪'), ('egg_futures', '鸡蛋'),
     ],
     'energy_chain': [
         ('crude_oil_futures', '原油'), ('natural_gas_futures', '天然气'),
-        ('gold_futures', '黄金'), ('usd_cny', '美元/人民币'),
+        ('usd_cny', '美元/人民币'),
     ],
     'metals_chain': [
         ('copper_futures', '铜'), ('aluminum_futures', '铝'),
-        ('rebar_futures', '螺纹钢'), ('gold_futures', '黄金'),
-        ('silver_futures', '白银'), ('iron_ore_futures', '铁矿石'),
+        ('rebar_futures', '螺纹钢'), ('iron_ore_futures', '铁矿石'),
     ],
     'macro_chain': [
-        ('usd_cny', '美元/人民币'), ('gold_futures', '黄金'),
-        ('copper_futures', '铜'), ('crude_oil_futures', '原油'),
+        ('usd_cny', '美元/人民币'), ('copper_futures', '铜'),
+        ('crude_oil_futures', '原油'),
     ],
 }
 
@@ -213,11 +215,15 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
     else:
         lines.append("⚪ 综合信号: HOLD（无有效信号）")
 
-    # 近5日价格趋势
+    # 近5日价格趋势（贵金属 + 该链条关键品种）
     if data_bus is not None:
-        key_assets = _KEY_ASSETS.get(chain_name, [])
+        key_assets = _PRECIOUS_METALS + _KEY_ASSETS.get(chain_name, [])
+        seen = set()
         trend_lines = []
         for data_dep, label in key_assets:
+            if data_dep in seen:
+                continue
+            seen.add(data_dep)
             prices = _get_price_trend(data_bus, data_dep)
             if prices:
                 trend_str = _format_trend(prices)
