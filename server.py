@@ -629,17 +629,27 @@ def _daily_push():
 
 
 def _init_scheduler():
+    # 文件锁：gunicorn 多 worker 时只让一个 worker 跑调度
+    import fcntl
+    lock_path = Path('/tmp/quant_factors_scheduler.lock')
+    lock_fd = open(lock_path, 'w')
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        logger.info('另一个 worker 已持有调度器锁，跳过初始化')
+        return
+
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
     except ImportError:
-        logger.error("APScheduler 未安装，定时任务不可用。请执行: pip install apscheduler")
+        logger.error('APScheduler 未安装，定时任务不可用。请执行: pip install apscheduler')
         raise SystemExit(1)
 
     scheduler = BackgroundScheduler(
         job_defaults={
-            'misfire_grace_time': 7200,   # 错过2小时内仍补执行
-            'coalesce': True,             # 合并错过的执行，只跑一次
-            'max_instances': 1,           # 同一任务不并发
+            'misfire_grace_time': 7200,
+            'coalesce': True,
+            'max_instances': 1,
         }
     )
     scheduler.add_job(_daily_data_refresh, 'cron', hour=18, minute=0, id='daily_refresh')
@@ -647,7 +657,7 @@ def _init_scheduler():
     scheduler.add_job(_daily_ic_compute, 'cron', hour=18, minute=30, id='daily_ic')
     scheduler.add_job(_daily_push, 'cron', hour=18, minute=35, id='daily_push')
     scheduler.start()
-    logger.info("APScheduler 已启动: 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送")
+    logger.info('APScheduler 已启动 (worker PID %d): 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送', os.getpid())
 
 
 @app.route('/push/<chain_name>', methods=['GET'])
