@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,40 +23,23 @@ FACTOR_VALUE_KEYS = [
     "pmi", "cost_per_jin", "vol_ratio", "seasonal_avg_return", "seasonal_win_rate",
 ]
 
-FACTOR_IMPORTS = [
-    "factors.meat.pork",
-    "factors.feed.soybean_meal",
-    "factors.feed.corn",
-    "factors.feed.soybean",
-    "factors.feed.rapeseed_meal",
-    "factors.cross.pig_grain_ratio",
-    "factors.cross.feed_cost",
-    "factors.cross.crush_margin",
-    "factors.cross.pig_chicken_spread",
-    "factors.cross.egg_feed_ratio",
-    "factors.cross.copper_gold_ratio",
-    "factors.cross.oil_gold_link",
-    "factors.cross.forex_commodity",
-    "factors.cross.pmi_metals",
-    "factors.macro.cpi",
-    "factors.macro.cpi_gold",
-    "factors.macro.pmi",
-    "factors.macro.forex",
-    "factors.macro.money_supply",
-    "factors.macro.cbot",
-    "factors.macro.social_financing",
-    "factors.macro.vix",
-    "factors.energy.energy",
-    "factors.energy.oil_assets",
-    "factors.metals.metals",
-    "factors.metals.silver",
-    "factors.metals.iron_ore",
-    "factors.cross.iron_rebar_cost",
-    "factors.technical.momentum",
-    "factors.technical.volatility",
-    "factors.technical.term_structure",
-    "factors.technical.seasonality",
-]
+
+def collect_factor_modules(chains_config: Dict[str, Dict[str, Any]]) -> List[str]:
+    """Return unique factor modules declared by chains.yaml in deterministic order.
+
+    Composite chains do not have ``factor_module`` and are skipped.  This keeps
+    module discovery tied to the runtime chain configuration instead of a second
+    hard-coded import list.
+    """
+    modules: List[str] = []
+    seen = set()
+    for cfg in chains_config.values():
+        module_name = cfg.get("factor_module")
+        if not module_name or module_name in seen:
+            continue
+        seen.add(module_name)
+        modules.append(module_name)
+    return modules
 
 
 def extract_factor_value(data: Any, factor_name: str = "unknown") -> Optional[float]:
@@ -104,7 +87,7 @@ class FactorRunner:
     def ensure_imported(self):
         if self._imported:
             return
-        for module_name in FACTOR_IMPORTS:
+        for module_name in collect_factor_modules(self.chains_config):
             importlib.import_module(module_name)
         self._imported = True
 
