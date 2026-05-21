@@ -27,6 +27,39 @@ class SignalLogger:
             )
         return cls._instance
 
+    @classmethod
+    def reset_instance(cls):
+        cls._instance = None
+
+    def _ensure_columns(self, conn):
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(signals)")}
+        migrations = []
+        if "run_id" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN run_id TEXT")
+        if "signal_json" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN signal_json TEXT")
+        if "factor_data_json" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN factor_data_json TEXT")
+        if "trigger" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN trigger TEXT")
+        if "holding_days" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN holding_days INTEGER")
+        if "stop_loss" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN stop_loss REAL")
+        if "as_of" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN as_of TEXT")
+        if "signal_strength" not in columns:
+            migrations.append("ALTER TABLE signals ADD COLUMN signal_strength REAL")
+        for sql in migrations:
+            conn.execute(sql)
+
+    def _migrate_signal_runs(self, conn):
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(signal_runs)")}
+        if "run_id" not in columns:
+            conn.execute("ALTER TABLE signal_runs ADD COLUMN run_id TEXT")
+        if "as_of" not in columns:
+            conn.execute("ALTER TABLE signal_runs ADD COLUMN as_of TEXT")
+
     def _init_db(self):
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
@@ -55,18 +88,23 @@ class SignalLogger:
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_signals_factor ON signals(factor_name, created_at)
         """)
+        self._ensure_columns(conn)
+        self._migrate_signal_runs(conn)
         conn.commit()
         conn.close()
 
     def log(self, factor_name: str, signal: Optional[Dict[str, Any]],
-            strength: Optional[float] = None, factor_data: Any = None):
-        today = datetime.now().strftime("%Y-%m-%d")
+            strength: Optional[float] = None, factor_data: Any = None,
+            as_of: Optional[str] = None, run_id: Optional[str] = None):
+        now = datetime.now()
+        run_date = as_of or now.strftime("%Y-%m-%d")
+        run_id = run_id or f"{factor_name}:{run_date}"
         try:
             conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
             conn.execute(
-                """INSERT OR REPLACE INTO signal_runs (factor_name, has_signal, run_date)
-                   VALUES (?, ?, ?)""",
-                (factor_name, 1 if signal is not None else 0, today)
+                """INSERT OR REPLACE INTO signal_runs (factor_name, has_signal, run_date, run_id, as_of)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (factor_name, 1 if signal is not None else 0, run_date, run_id, as_of)
             )
             conn.commit()
         except Exception as e:
@@ -81,18 +119,32 @@ class SignalLogger:
             return
         try:
             conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
+            signal_json = json.dumps(signal, ensure_ascii=False, default=str)
+            factor_data_json = json.dumps(factor_data, ensure_ascii=False, default=str) if factor_data is not None else None
             conn.execute(
-                """INSERT INTO signals (factor_name, direction, strength, confidence, reason, asset, factor_data, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO signals (
+                       factor_name, direction, strength, confidence, reason, asset,
+                       factor_data, created_at, run_id, signal_json, factor_data_json,
+                       trigger, holding_days, stop_loss, as_of, signal_strength
+                   )
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     factor_name,
                     signal.get("direction"),
-                    strength,
+                    strength if strength is not None else signal.get("strength"),
                     signal.get("confidence"),
                     signal.get("reason"),
                     signal.get("asset"),
-                    json.dumps(factor_data, default=str) if factor_data else None,
-                    datetime.now().isoformat()
+                    factor_data_json,
+                    now.isoformat(),
+                    run_id,
+                    signal_json,
+                    factor_data_json,
+                    signal.get("trigger"),
+                    signal.get("holding_days"),
+                    signal.get("stop_loss"),
+                    as_of,
+                    signal.get("signal_strength", signal.get("strength")),
                 )
             )
             conn.commit()
@@ -104,11 +156,22 @@ class SignalLogger:
             except Exception:
                 pass
 
+    def _select_columns(self, conn):
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(signals)")]
+        preferred = [
+            "id", "factor_name", "direction", "strength", "signal_strength", "confidence",
+            "reason", "asset", "trigger", "holding_days", "stop_loss", "run_id", "as_of",
+            "signal_json", "factor_data_json", "factor_data", "created_at",
+        ]
+        seen = set(columns)
+        return [col for col in preferred if col in seen]
+
     def query(self, factor_name: str = None, days: int = 30,
               limit: int = 100) -> List[Dict[str, Any]]:
         conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
-        sql = "SELECT * FROM signals WHERE 1=1"
+        selected = ", ".join(self._select_columns(conn))
+        sql = f"SELECT {selected} FROM signals WHERE 1=1"
         params = []
         if factor_name:
             sql += " AND factor_name = ?"
