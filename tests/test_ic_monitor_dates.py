@@ -27,7 +27,16 @@ class ICMonitorDateAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "ic.db"
             monitor = ICMonitor(str(db_path))
-            dates = pd.date_range("2024-01-01", periods=40, freq="D")
+            dates = pd.to_datetime([
+                "2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05",
+                "2024-01-08", "2024-01-09", "2024-01-10", "2024-01-11", "2024-01-12",
+                "2024-01-15", "2024-01-16", "2024-01-17", "2024-01-18", "2024-01-19",
+                "2024-01-22", "2024-01-23", "2024-01-24", "2024-01-25", "2024-01-26",
+                "2024-01-29", "2024-01-30", "2024-01-31", "2024-02-01", "2024-02-02",
+                "2024-02-05", "2024-02-06", "2024-02-07", "2024-02-08", "2024-02-09",
+                "2024-02-12", "2024-02-13", "2024-02-14", "2024-02-15", "2024-02-16",
+                "2024-02-19", "2024-02-20", "2024-02-21", "2024-02-22", "2024-02-23",
+            ])
             for i, d in enumerate(dates[:30]):
                 monitor.snapshot("factor_a", float(i), snapshot_date=d.strftime("%Y-%m-%d"))
 
@@ -41,12 +50,13 @@ class ICMonitorDateAuditTest(unittest.TestCase):
             self.assertIn("ic", result)
             self.assertEqual(result["forward_days"], 5)
             audit = result["date_audit"]
-            self.assertEqual(audit["snapshot_start"], "2024-01-11")
-            self.assertEqual(audit["snapshot_end"], "2024-01-30")
-            self.assertEqual(audit["forward_return_start"], "2024-01-16")
-            self.assertEqual(audit["forward_return_end"], "2024-02-04")
+            self.assertEqual(audit["snapshot_start"], "2024-01-15")
+            self.assertEqual(audit["snapshot_end"], "2024-02-09")
+            self.assertEqual(audit["forward_return_start"], "2024-01-22")
+            self.assertEqual(audit["forward_return_end"], "2024-02-16")
+            self.assertEqual(audit["forward_date_mode"], "price_index_offset")
             self.assertEqual(audit["price_start"], "2024-01-01")
-            self.assertEqual(audit["price_end"], "2024-02-09")
+            self.assertEqual(audit["price_end"], "2024-02-23")
             self.assertEqual(audit["price_col"], "close")
             self.assertEqual(audit["forward_dates_available"], 20)
 

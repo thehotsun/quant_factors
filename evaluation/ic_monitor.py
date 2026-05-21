@@ -104,7 +104,7 @@ class ICMonitor:
             price_df = price_df.set_index("date")
 
         price_col = "close" if "close" in price_df.columns else price_df.columns[0]
-        prices = price_df[price_col].astype(float)
+        prices = price_df[price_col].astype(float).sort_index()
 
         forward_returns = prices.pct_change(forward_days).shift(-forward_days)
 
@@ -125,9 +125,9 @@ class ICMonitor:
             return None
 
         sample_dates = list(fv.index)
-        forward_end_dates = [d + pd.Timedelta(days=forward_days) for d in sample_dates]
-        price_index = prices.index
-        available_forward_end_dates = [d for d in forward_end_dates if d in price_index]
+        price_index = pd.Index(prices.index)
+        forward_end_dates = self._forward_end_dates(sample_dates, price_index, forward_days)
+        available_forward_end_dates = [d for d in forward_end_dates if d is not None]
 
         ic, p_value = stats.spearmanr(fv, fr)
         ic = float(ic)
@@ -147,8 +147,9 @@ class ICMonitor:
             "date_audit": {
                 "snapshot_start": sample_dates[0].strftime("%Y-%m-%d"),
                 "snapshot_end": sample_dates[-1].strftime("%Y-%m-%d"),
-                "forward_return_start": forward_end_dates[0].strftime("%Y-%m-%d"),
-                "forward_return_end": forward_end_dates[-1].strftime("%Y-%m-%d"),
+                "forward_return_start": available_forward_end_dates[0].strftime("%Y-%m-%d") if available_forward_end_dates else None,
+                "forward_return_end": available_forward_end_dates[-1].strftime("%Y-%m-%d") if available_forward_end_dates else None,
+                "forward_date_mode": "price_index_offset",
                 "price_start": prices.index.min().strftime("%Y-%m-%d") if hasattr(prices.index.min(), "strftime") else str(prices.index.min()),
                 "price_end": prices.index.max().strftime("%Y-%m-%d") if hasattr(prices.index.max(), "strftime") else str(prices.index.max()),
                 "price_col": price_col,
@@ -156,6 +157,34 @@ class ICMonitor:
             },
             "status": self._ic_status(ic),
         }
+
+    @staticmethod
+    def _forward_end_dates(sample_dates: List[pd.Timestamp], price_index: pd.Index,
+                           forward_days: int) -> List[Optional[pd.Timestamp]]:
+        """Map each sample date to the Nth future observation in price_index.
+
+        The IC return series uses ``pct_change(forward_days).shift(-forward_days)``,
+        which is an observation offset rather than calendar-day arithmetic.  This
+        helper exposes the same date boundary explicitly for audits.
+        """
+        sorted_index = pd.Index(pd.to_datetime(price_index)).sort_values()
+        result: List[Optional[pd.Timestamp]] = []
+        for date in sample_dates:
+            ts = pd.to_datetime(date)
+            if ts not in sorted_index:
+                result.append(None)
+                continue
+            pos = sorted_index.get_loc(ts)
+            if isinstance(pos, slice):
+                pos = pos.start
+            elif not isinstance(pos, (int, np.integer)):
+                positions = list(pos)
+                pos = positions[0] if positions else None
+            if pos is None or pos + forward_days >= len(sorted_index):
+                result.append(None)
+            else:
+                result.append(sorted_index[pos + forward_days])
+        return result
 
     def _ic_status(self, ic: float) -> str:
         abs_ic = abs(ic)
