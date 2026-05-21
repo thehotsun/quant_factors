@@ -63,13 +63,17 @@ def health():
 def analyze_auto(chain):
     _runner.ensure_imported()
 
-    if chain in CHAINS_CONFIG:
+    cfg = CHAINS_CONFIG.get(chain)
+    if cfg:
+        if cfg.get("category") == "composite":
+            return _run_composite_chain(chain)
+
         result = _run_factor_chain(chain)
         if result:
             return jsonify({
                 "chain": chain,
-                "description": CHAINS_CONFIG[chain].get("description", ""),
-                "category": CHAINS_CONFIG[chain].get("category", ""),
+                "description": cfg.get("description", ""),
+                "category": cfg.get("category", ""),
                 "opportunity": result["opportunity"],
                 "factor_data": result["factor_data"],
                 "signal_strength": result.get("signal_strength"),

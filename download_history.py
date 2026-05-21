@@ -113,6 +113,29 @@ def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
         return None
 
 
+def fetch_cbot_soybean():
+    """下载 CBOT 大豆连续合约历史数据。
+
+    AKShare 的外盘期货接口中，CBOT Soybean 对应 symbol="S"。
+    返回字段已包含 date/open/high/low/close，可直接供 CbotSoybeanFactor 使用。
+    """
+    try:
+        df = ak.futures_foreign_hist(symbol="S")
+        if df is None or df.empty:
+            print("  CBOT大豆下载为空")
+            return None
+        df["date"] = pd.to_datetime(df["date"])
+        for col in ["open", "high", "low", "close", "volume", "position", "settlement"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        df = df.dropna(subset=["date", "close"]).sort_values("date")
+        df.reset_index(drop=True, inplace=True)
+        return df
+    except Exception as e:
+        print(f"  CBOT大豆下载失败: {e}")
+        return None
+
+
 def fetch_pboc_social_financing():
     """从央行官网抓取社会融资规模增量数据（XLSX 格式），并与 AKShare 历史数据合并"""
     try:
@@ -333,7 +356,15 @@ def main():
     except Exception as e:
         print(f"  天然气下载失败: {e}")
 
-    print("24. 美国CPI")
+    print("24. CBOT大豆")
+    try:
+        cbot = fetch_cbot_soybean()
+        if cbot is not None:
+            save_parquet(cbot, "cbot_soybean")
+    except Exception as e:
+        print(f"  CBOT大豆下载失败: {e}")
+
+    print("25. 美国CPI")
     try:
         us_cpi = fetch_fred_csv("CPIAUCSL", "美国CPI")
         if us_cpi is not None:
@@ -341,7 +372,7 @@ def main():
     except Exception as e:
         print(f"  美国CPI下载失败: {e}")
 
-    print("25. EIA原油库存")
+    print("26. EIA原油库存")
     try:
         eia = fetch_eia_crude_stock()
         if eia is not None:
@@ -353,7 +384,7 @@ def main():
     except Exception as e:
         print(f"  EIA库存下载失败: {e}")
 
-    print("26. QVIX波动率")
+    print("27. QVIX波动率")
     try:
         vix = ak.index_option_300etf_qvix()
         # QVIX 2019-12 才上线，过滤掉上线前的空行
@@ -363,7 +394,7 @@ def main():
     except Exception as e:
         print(f"  QVIX下载失败: {e}")
 
-    print("27. TIPS收益率")
+    print("28. TIPS收益率")
     try:
         tips = fetch_fred_csv("DFII10", "TIPS收益率")
         if tips is not None:
@@ -373,8 +404,8 @@ def main():
 
     # ==================== 暂不支持的数据 ====================
     print("\n--- 暂不支持的数据 ---")
-    print("  CBOT大豆 - 无可用接口")
-    print("  鸡肉现货 - 接口已变更")
+    print("  鸡肉现货 - 接口已变更，尚未找到稳定历史源")
+    print("  生猪远月期货 - 需要合约链/远月连续口径，尚未接入")
 
     print("\n历史数据下载完成！")
 

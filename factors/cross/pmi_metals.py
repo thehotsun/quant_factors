@@ -45,8 +45,12 @@ class PMIMetalsLink(BaseFactor):
         aluminum_df = self.load("aluminum_futures")
 
         if pmi_df is not None:
-            col = 'value' if 'value' in pmi_df.columns else 'pmi'
-            if col in pmi_df.columns and len(pmi_df) >= 2:
+            col = None
+            for candidate in ['value', 'pmi', '制造业-指数']:
+                if candidate in pmi_df.columns:
+                    col = candidate
+                    break
+            if col is not None and len(pmi_df) >= 2:
                 current = self._safe_float(pmi_df.tail(1), -1, col=col)
                 previous = self._safe_float(pmi_df.tail(2), -2, col=col)
                 result["pmi"] = current

@@ -71,6 +71,11 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
 
         module_name = cfg.get("factor_module")
         class_name = cfg.get("factor_class")
+        missing_deps = []
+        for dep in cfg.get("data_deps", []):
+            if not (ROOT / "data" / f"{dep}.parquet").exists():
+                missing_deps.append(dep)
+
         if not module_name or not class_name:
             item["ok"] = False
             item["errors"].append("missing factor_module/factor_class")
@@ -93,7 +98,7 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
                     data = normalize_factor_data(factor.calculate(), name)
                     if not isinstance(data, dict):
                         item["warnings"].append("calculate did not return dict")
-                    elif data.get("factor_value") is None:
+                    elif data.get("factor_value") is None and not missing_deps:
                         item["warnings"].append("factor_value is missing or None")
                     factor._cached_data = data
                     signal = factor.signal()
@@ -105,10 +110,6 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
                     item["ok"] = False
                     item["errors"].append(f"calculate/signal failed: {type(exc).__name__}: {exc}")
 
-        missing_deps = []
-        for dep in cfg.get("data_deps", []):
-            if not (ROOT / "data" / f"{dep}.parquet").exists():
-                missing_deps.append(dep)
         if missing_deps:
             item["warnings"].append(f"missing data_deps files: {missing_deps}")
 

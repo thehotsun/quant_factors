@@ -25,6 +25,25 @@ def fetch_fred_csv(series_id: str, name: str, start_date: str = "2020-01-01") ->
         return None
 
 
+def fetch_cbot_soybean() -> Optional[pd.DataFrame]:
+    """下载 CBOT 大豆连续合约历史数据。"""
+    try:
+        df = ak.futures_foreign_hist(symbol="S")
+        if df is None or df.empty:
+            logger.warning("CBOT大豆下载为空")
+            return None
+        df["date"] = pd.to_datetime(df["date"])
+        for col in ["open", "high", "low", "close", "volume", "position", "settlement"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        df = df.dropna(subset=["date", "close"]).sort_values("date")
+        df.reset_index(drop=True, inplace=True)
+        return df
+    except Exception as e:
+        logger.warning("CBOT大豆下载失败: %s", e)
+        return None
+
+
 def retry_fetch(name: str, fetcher: Callable[[], pd.DataFrame], max_retries: int = 3,
                 base_delay: int = 2):
     for attempt in range(max_retries):
@@ -98,6 +117,7 @@ def daily_data_refresh_foreign(data_bus):
 
         tasks = [
             ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
+            ("CBOT大豆", fetch_cbot_soybean, "cbot_soybean"),
             ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
             ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
             ("布伦特原油", lambda: fetch_brent_oil() or ak.energy_oil_hist(), "brent_oil"),

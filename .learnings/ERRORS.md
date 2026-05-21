@@ -75,3 +75,31 @@ For subagent runtime, omit `streamTo`; only use `streamTo` with `runtime="acp"`.
 **What happened**: A sensitive-string grep command failed with `unexpected EOF while looking for matching '"'` because the regex mixed single quotes inside a single-quoted shell string.
 
 **Resolution**: For complex regex containing both single and double quotes, use `python`/ripgrep with a here-doc or simplify quoting instead of embedding nested quote patterns directly in one shell string.
+
+## [ERR-20260521-001] wrong Python environment for project dependency
+
+**Logged**: 2026-05-21T21:10:00+08:00
+**Priority**: low
+
+Tried to inspect AKShare with system `python3`, which failed because project dependencies live in `./quantenv`. Use `./quantenv/bin/python` for quant_factors dependency checks and scripts. No secrets involved.
+
+## [ERR-20260521-002] importing server internals by stale variable name
+
+**Logged**: 2026-05-21T21:11:00+08:00
+**Priority**: low
+
+A diagnostic script tried `from server import FACTOR_PARAMS`, but current server internals use underscored names. Prefer loading config directly for diagnostics to avoid server import side effects.
+
+## [ERR-20260521-003] composite analyze route mismatch in regression script
+
+**Logged**: 2026-05-21T21:13:00+08:00
+**Priority**: medium
+
+A naive full-chain regression called `/analyze/<chain>` for every chain in `chains.yaml`; three composite chains (`energy_chain`, `metals_chain`, `macro_chain`) returned `unknown chain`. Regression scripts should respect server-supported composite routes or server should expose all configured chains consistently.
+
+## [ERR-20260521-004] ignored generated parquet in git add
+
+**Logged**: 2026-05-21T21:14:00+08:00
+**Priority**: low
+
+Tried to stage `data/cbot_soybean.parquet`, but data files are intentionally ignored. Do not force-add generated market data unless explicitly requested; commit the fetch/refresh code instead.
