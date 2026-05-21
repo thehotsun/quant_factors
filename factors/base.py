@@ -50,8 +50,11 @@ class BaseFactor(ABC):
         return (current - previous) / previous
 
     def _zscore(self, value: float, series: pd.Series) -> float:
-        mean = series.mean()
-        std = series.std()
+        clean = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        if len(clean) < 2:
+            return 0.0
+        mean = clean.mean()
+        std = clean.std()
         if std == 0 or np.isnan(std):
             return 0.0
         return (value - mean) / std
@@ -67,7 +70,10 @@ class BaseFactor(ABC):
         cache_key = f"{name}_{len(series)}_{base}"
         if cache_key in self._threshold_cache:
             return self._threshold_cache[cache_key]
-        vol = series.pct_change().std()
+        clean = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        if len(clean) < 2:
+            return base
+        vol = clean.pct_change().replace([np.inf, -np.inf], np.nan).dropna().std()
         if np.isnan(vol):
             return base
         adjustment = 1.0 + max(0.0, (vol - 0.01) * vol_sensitivity)
@@ -79,11 +85,13 @@ class BaseFactor(ABC):
         """自适应 Z-score 阈值：基于近期分布宽度调整"""
         if not self.adaptive:
             return base_z
-        recent = series.tail(60)
-        long_term = series
+        recent = pd.to_numeric(series.tail(60), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        long_term = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        if len(recent) < 2 or len(long_term) < 2:
+            return base_z
         recent_std = recent.std()
         long_std = long_term.std()
-        if long_std == 0:
+        if long_std == 0 or np.isnan(long_std) or np.isnan(recent_std):
             return base_z
         ratio = recent_std / long_std
         return base_z * (0.8 + 0.4 * ratio)
@@ -169,16 +177,40 @@ class BaseFactor(ABC):
     def _make_signal(self, asset: str, direction: str, reason: str,
                      holding_days: int = 5, stop_loss: float = -0.02,
                      confidence: float = 0.5, strength: float = None, **kwargs) -> Dict[str, Any]:
+        raw_strength = strength if strength is not None else (0.5 if direction == "BUY" else -0.5)
+        try:
+            normalized_strength = max(-1.0, min(1.0, float(raw_strength)))
+        except (TypeError, ValueError):
+            normalized_strength = 0.0
+
+        try:
+            normalized_confidence = max(0.0, min(1.0, float(confidence)))
+        except (TypeError, ValueError):
+            normalized_confidence = 0.5
+
+        meta = kwargs.pop("meta", {}) or {}
+        trigger = kwargs.get("trigger")
+        factor_value = kwargs.pop("factor_value", None)
+
         signal = {
             "asset": asset,
             "direction": direction,
-            "strength": strength if strength is not None else (0.5 if direction == "BUY" else -0.5),
+            "strength": normalized_strength,
+            "signal_strength": normalized_strength,
             "reason": reason,
             "holding_days": holding_days,
             "stop_loss": stop_loss,
-            "confidence": confidence,
+            "confidence": normalized_confidence,
+            "trigger": trigger,
+            "factor_value": factor_value,
+            "meta": meta,
         }
+        # Keep legacy flat fields for current API consumers, while also
+        # grouping non-standard extras under meta for a stable schema.
         signal.update(kwargs)
+        for key, value in kwargs.items():
+            if key not in {"trigger"}:
+                signal["meta"].setdefault(key, value)
         return signal
 
     @abstractmethod

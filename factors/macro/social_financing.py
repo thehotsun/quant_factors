@@ -22,6 +22,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
+from core.macro_calendar import available_asof, latest_period_date, latest_release_date
 
 
 @FactorRegistry.register(
@@ -38,12 +39,17 @@ class SocialFinancingFactor(BaseFactor):
             "m2_sf_spread": None,
             "sf_trend": None,
             "signal": None,
+            "factor_value": None,
+            "period_date": None,
+            "release_date": None,
         }
 
-        sf_df = self.load("social_financing")
-        m2_df = self.load("m2")
+        sf_df = available_asof(self.load("social_financing"), "social_financing", self.params.get("as_of"))
+        m2_df = available_asof(self.load("m2"), "m2", self.params.get("as_of"))
 
         if sf_df is not None and len(sf_df) >= 3:
+            result["period_date"] = latest_period_date(sf_df)
+            result["release_date"] = latest_release_date(sf_df)
             sf_df = sf_df.sort_values("月份") if "月份" in sf_df.columns else sf_df
             col = self._find_value_column(sf_df, ["社融规模增量", "社会融资规模增量", "value"])
             if col:
@@ -74,20 +80,17 @@ class SocialFinancingFactor(BaseFactor):
                         result["sf_momentum"] = round((last_3 / first_3 - 1) * 100, 1)
 
         if m2_df is not None and len(m2_df) >= 3:
-            col = self._find_value_column(m2_df, ["M2", "m2", "货币和准货币(M2)", "value"])
+            col = self._find_value_column(m2_df, ["货币和准货币(M2)-同比增长", "M2", "m2", "货币和准货币(M2)", "value"])
             if col:
                 recent = m2_df[col].tail(3).astype(float)
                 result["m2_latest"] = float(recent.iloc[-1])
-                if len(m2_df) >= 13:
-                    prev_year = m2_df[col].iloc[-13:-10].astype(float)
-                    prev_avg = float(prev_year.mean())
-                    if prev_avg > 0:
-                        result["m2_growth"] = round((result["m2_latest"] / prev_avg - 1) * 100, 1)
+                result["m2_growth"] = result["m2_latest"]
 
         sf_g = result.get("sf_growth")
         m2_g = result.get("m2_growth")
         if sf_g is not None and m2_g is not None:
             result["m2_sf_spread"] = round(m2_g - sf_g, 1)
+            result["factor_value"] = sf_g
 
         sf_mom = result.get("sf_momentum")
         if sf_g is not None:
@@ -130,6 +133,8 @@ class SocialFinancingFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.05, confidence=0.75,
                 strength=0.80, trigger="sf_strong_expansion",
                 sf_growth=data["sf_growth"], m2_sf_spread=spread,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=data.get("sf_growth"),
             )
 
         if sig == "buy":
@@ -139,6 +144,8 @@ class SocialFinancingFactor(BaseFactor):
                 holding_days=20, stop_loss=-0.04, confidence=0.60,
                 strength=0.55, trigger="sf_moderate_growth",
                 sf_growth=data["sf_growth"],
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=data.get("sf_growth"),
             )
 
         if sig == "sell" and spread is not None and spread > 2:
@@ -148,6 +155,8 @@ class SocialFinancingFactor(BaseFactor):
                 holding_days=20, stop_loss=-0.04, confidence=0.70,
                 strength=-0.70, trigger="sf_contraction",
                 sf_growth=data["sf_growth"], m2_sf_spread=spread,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=data.get("sf_growth"),
             )
         return None
 

@@ -36,7 +36,14 @@ quant_factors/
 ├── config/
 │   ├── chains.yaml          #   链条配置（因子→资产→数据依赖）
 │   └── factor_params.yaml   #   因子参数（可热更新）
-├── server.py                # Flask API 服务（含内置定时任务：数据刷新 + IC 计算）
+├── core/                    # 核心基础设施
+│   ├── config.py            #   环境变量配置与 Tushare client 懒加载
+│   ├── data_bus.py          #   数据缓存/读取
+│   ├── factor_runner.py     #   因子导入、实例化、执行、日志与 IC 快照
+│   ├── macro_calendar.py    #   宏观数据发布日期/as-of 过滤
+│   ├── push.py              #   推送渠道与信号日报格式化
+│   └── signal_*.py          #   信号聚合、落库
+├── server.py                # Flask API 服务（路由 + 内置定时任务）
 ├── download_history.py      # 历史数据一次性下载
 ├── setup.sh                 # 一键部署脚本
 ├── start.sh                 # 后台启动脚本
@@ -869,14 +876,16 @@ curl http://localhost:5001/ic/health
 
 ### 7. 定时任务（内置，无需 crontab）
 
-服务启动时自动注册两个定时任务（在 `server.py` 中），**不需要额外配置 crontab**：
+服务启动时自动注册定时任务（在 `server.py` 中），**不需要额外配置 crontab**。Gunicorn 多 worker 部署时通过文件锁保证只有一个 worker 启动调度器：
 
 | 时间 | 任务 | 说明 |
 |------|------|------|
-| 每天 18:00 | 数据刷新 | 从 AKShare 拉取最新行情，覆盖 parquet 文件 |
+| 每天 18:00 | 国内数据刷新 | 从 AKShare/Tushare 等数据源拉取最新行情，覆盖 parquet 文件 |
+| 每天 06:00 | 外盘数据刷新 | 拉取外盘/海外数据 |
 | 每天 18:30 | IC 计算 | 计算所有因子的 Rank IC，写入 ic_monitor.db |
+| 每天 18:35 | 推送日报 | 对综合链条生成报告并发送到已配置渠道 |
 
-依赖 `apscheduler` 库（已在 requirements.txt 中）。如果未安装，定时任务静默跳过，不影响 API 服务。
+依赖 `apscheduler` 库（已在 requirements.txt 中）。如果未安装，服务会在启动时报出清晰错误。Tushare 数据刷新需要运行环境设置 `TUSHARE_TOKEN`，不要把 token 写进源码。
 
 ### 8. 与 Node.js 工作流集成
 

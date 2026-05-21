@@ -29,17 +29,29 @@ from core.factor_registry import FactorRegistry
 )
 class ForexFactor(BaseFactor):
     def calculate(self) -> Dict[str, Any]:
-        result = {"usd_cny": None, "daily_change": None}
+        result = {"usd_cny": None, "daily_change": None, "factor_value": None}
 
         df = self.load("usd_cny")
         if df is None:
             return result
 
-        col = 'close' if 'close' in df.columns else 'value'
-        if col in df.columns and len(df) >= 2:
+        col = None
+        for candidate in ['close', 'value', 'DEXCHUS', 'usd_cny', 'USD_CNY']:
+            if candidate in df.columns:
+                col = candidate
+                break
+        if col is None:
+            numeric_cols = [c for c in df.columns if c != 'date']
+            col = numeric_cols[0] if numeric_cols else None
+        if col is None:
+            return result
+
+        current = None
+        if len(df) >= 2:
             current = self._safe_float(df.tail(1), -1, col=col)
             previous = self._safe_float(df.tail(2), -2, col=col)
             result["usd_cny"] = current
+            result["factor_value"] = current
             result["daily_change"] = self._pct_change(current, previous)
 
         if len(df) >= 20:

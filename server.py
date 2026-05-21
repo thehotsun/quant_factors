@@ -9,12 +9,14 @@ import yaml
 import os
 import logging
 import akshare as ak
-import tushare as ts
+from core.config import MissingConfigError, get_tushare_pro
+from core.factor_runner import FactorRunner
 
-# Tushare 配置
-TUSHARE_TOKEN = "165fb826f4b6e41aeb37ef84b7f4c99df784cbfec771ee139dfae048"
-ts.set_token(TUSHARE_TOKEN)
-tushare_pro = ts.pro_api()
+try:
+    tushare_pro = get_tushare_pro()
+except MissingConfigError as e:
+    tushare_pro = None
+    logging.getLogger(__name__).warning(str(e))
 
 
 def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
@@ -50,51 +52,9 @@ except Exception as e:
     logger.error(f"加载 chains.yaml 失败: {e}")
     raise SystemExit(f"无法加载 chains.yaml: {e}")
 
-_imported = False
 _data_bus = DataBus(str(DATA_DIR))
 _signal_logger = SignalLogger(str(DATA_DIR / "signals.db"))
 _ic_monitor = ICMonitor(str(DATA_DIR / "ic_monitor.db"))
-
-
-def _ensure_imported():
-    global _imported
-    if _imported:
-        return
-    import factors.meat.pork
-    import factors.feed.soybean_meal
-    import factors.feed.corn
-    import factors.feed.soybean
-    import factors.feed.rapeseed_meal
-    import factors.cross.pig_grain_ratio
-    import factors.cross.feed_cost
-    import factors.cross.crush_margin
-    import factors.cross.pig_chicken_spread
-    import factors.cross.egg_feed_ratio
-    import factors.cross.copper_gold_ratio
-    import factors.cross.oil_gold_link
-    import factors.cross.forex_commodity
-    import factors.cross.pmi_metals
-    import factors.macro.cpi
-    import factors.macro.cpi_gold
-    import factors.macro.pmi
-    import factors.macro.forex
-    import factors.macro.money_supply
-    import factors.macro.cbot
-    import factors.macro.social_financing
-    import factors.macro.vix
-    import factors.energy.energy
-    import factors.energy.oil_assets
-    import factors.metals.metals
-    import factors.metals.silver
-    import factors.metals.iron_ore
-    import factors.cross.iron_rebar_cost
-    import factors.technical.momentum
-    import factors.technical.volatility
-    import factors.technical.term_structure
-    import factors.technical.seasonality
-    _imported = True
-
-
 _FACTOR_PARAMS = {}
 try:
     _params_path = Path(__file__).parent / "config" / "factor_params.yaml"
@@ -106,109 +66,15 @@ except Exception as e:
     logger.warning(f"加载 factor_params.yaml 失败: {e}")
 
 
+_runner = FactorRunner(CHAINS_CONFIG, _FACTOR_PARAMS, DATA_DIR, _signal_logger, _ic_monitor)
+
+
 def _instantiate_factor(chain_name):
-    cfg = CHAINS_CONFIG.get(chain_name)
-    if not cfg:
-        return None
-    module_path = cfg.get("factor_module")
-    class_name = cfg.get("factor_class")
-    if not module_path or not class_name:
-        return None
-    try:
-        import importlib
-        mod = importlib.import_module(module_path)
-        cls = getattr(mod, class_name)
-        factor_cfg = _FACTOR_PARAMS.get(chain_name, {})
-        kwargs = {
-            "data_dir": str(DATA_DIR),
-            "adaptive": factor_cfg.get("adaptive", True),
-            "params": factor_cfg.get("params", {}),
-        }
-        for key in ("symbol", "far_symbol"):
-            if key in cfg:
-                kwargs[key] = cfg[key]
-        return cls(**kwargs)
-    except Exception as e:
-        logger.warning(f"实例化因子 {chain_name} 失败: {e}")
-        return None
+    return _runner.instantiate(chain_name)
 
 
 def _run_factor_chain(chain_name):
-    factor = _instantiate_factor(chain_name)
-    if factor is None:
-        return None
-    try:
-        data = factor.calculate()
-    except Exception as e:
-        logger.error(f"因子 {chain_name} calculate 失败: {e}")
-        return {"factor_data": None, "opportunity": None, "signal_strength": None, "error": str(e), "error_type": type(e).__name__}
-    factor._cached_data = data
-    try:
-        signal = factor.signal()
-    except Exception as e:
-        logger.error(f"因子 {chain_name} signal 失败: {e}")
-        signal = None
-    strength = None
-    if hasattr(factor, 'signal_strength'):
-        try:
-            strength = factor.signal_strength()
-        except Exception as e:
-            logger.warning(f"因子 {chain_name} signal_strength 计算失败: {e}")
-
-    _signal_logger.log(chain_name, signal, strength, data)
-
-    if data is not None:
-        try:
-            fv = _extract_factor_value(data, chain_name)
-            if fv is not None:
-                _ic_monitor.snapshot(chain_name, fv, strength)
-            else:
-                logger.debug(f"因子 {chain_name} 无有效因子值，跳过 IC 快照")
-        except Exception as e:
-            logger.warning(f"因子 {chain_name} IC快照失败: {e}")
-
-    return {
-        "factor_data": data,
-        "opportunity": signal,
-        "signal_strength": strength,
-    }
-
-
-def _extract_factor_value(data, factor_name: str = "unknown"):
-    if data is None:
-        return None
-    if isinstance(data, (int, float)):
-        return float(data)
-    if not isinstance(data, dict):
-        return None
-    if "factor_value" in data and data["factor_value"] is not None:
-        try:
-            return float(data["factor_value"])
-        except (ValueError, TypeError):
-            pass
-
-    _FALLBACK_KEYS = [
-        "zscore", "zscore_20d", "ratio", "pig_grain_ratio", "egg_feed_ratio",
-        "pig_chicken_ratio", "copper_gold_ratio", "oil_gas_ratio", "iron_rebar_ratio",
-        "score", "momentum_score", "value", "change", "spread", "margin", "crush_margin",
-        "diff", "divergence",
-        "current_price", "current", "current_cpi", "current_pmi", "latest",
-        "cpi_actual", "cbot_soybean", "vix_current", "usd_cny",
-        "domestic_soybean", "iron_ore_price", "feed_cost_index",
-        "m2_yoy", "sf_growth", "pmi",
-        "cost_per_jin", "vol_ratio", "seasonal_avg_return", "seasonal_win_rate",
-    ]
-    for key in _FALLBACK_KEYS:
-        if key in data and data[key] is not None:
-            try:
-                logger.debug(
-                    f"因子 {factor_name} 未使用 'factor_value' 字段，"
-                    f"通过 fallback key '{key}' 提取因子值。"
-                )
-                return float(data[key])
-            except (ValueError, TypeError):
-                continue
-    return None
+    return _runner.run_chain(chain_name)
 
 
 @app.route('/health', methods=['GET'])
@@ -218,7 +84,7 @@ def health():
 
 @app.route('/analyze/<chain>', methods=['GET'])
 def analyze_auto(chain):
-    _ensure_imported()
+    _runner.ensure_imported()
 
     if chain in CHAINS_CONFIG:
         result = _run_factor_chain(chain)
@@ -237,7 +103,7 @@ def analyze_auto(chain):
 
 
 def _run_composite_chain(chain_name):
-    _ensure_imported()
+    _runner.ensure_imported()
     cfg = CHAINS_CONFIG.get(chain_name, {})
     sub_chains = cfg.get("sub_chains", [])
     description = cfg.get("description", "")
@@ -309,7 +175,7 @@ def macro_chain():
 
 @app.route('/chains', methods=['GET'])
 def list_chains():
-    _ensure_imported()
+    _runner.ensure_imported()
     chain_list = []
     for name, cfg in CHAINS_CONFIG.items():
         chain_list.append({
@@ -324,7 +190,7 @@ def list_chains():
 
 @app.route('/factor/<chain_name>', methods=['GET'])
 def factor_data(chain_name):
-    _ensure_imported()
+    _runner.ensure_imported()
     factor = _instantiate_factor(chain_name)
     if factor is None:
         return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
@@ -348,7 +214,7 @@ def factor_data(chain_name):
 
 @app.route('/registry', methods=['GET'])
 def list_registry():
-    _ensure_imported()
+    _runner.ensure_imported()
     factors = FactorRegistry.list_all()
     return jsonify({
         "factors": factors,
@@ -358,7 +224,7 @@ def list_registry():
 
 @app.route('/signal/<chain_name>', methods=['GET'])
 def signal_only(chain_name):
-    _ensure_imported()
+    _runner.ensure_imported()
     factor = _instantiate_factor(chain_name)
     if factor is None:
         return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
@@ -404,7 +270,7 @@ def signal_stats():
 
 @app.route('/ic/<factor_name>', methods=['GET'])
 def ic_analysis(factor_name):
-    _ensure_imported()
+    _runner.ensure_imported()
     cfg = CHAINS_CONFIG.get(factor_name)
     if not cfg:
         return jsonify({"error": f"unknown factor: {factor_name}"}), 400
@@ -446,7 +312,7 @@ def ic_analysis(factor_name):
 
 @app.route('/ic/health', methods=['GET'])
 def ic_health_report():
-    _ensure_imported()
+    _runner.ensure_imported()
     report = _ic_monitor.health_report()
 
     decayed = [r for r in report if r.get("trend") in ("severe_decay", "moderate_decay")]
@@ -569,7 +435,7 @@ def _daily_data_refresh_foreign():
 def _daily_ic_compute():
     """定时任务：每日 IC 计算"""
     logger.info("开始每日 IC 计算...")
-    _ensure_imported()
+    _runner.ensure_imported()
 
     _MONTHLY_SOURCES = {"cpi", "pmi", "m2", "social_financing", "us_cpi"}
 
@@ -628,16 +494,22 @@ def _daily_push():
         logger.info(f"每日推送完成: {success_count}/{len(composite_chains)} 个链条推送成功")
 
 
+_scheduler_lock_fd = None
+
+
 def _init_scheduler():
     # 文件锁：gunicorn 多 worker 时只让一个 worker 跑调度
     import fcntl
+    global _scheduler_lock_fd
     lock_path = Path('/tmp/quant_factors_scheduler.lock')
     lock_fd = open(lock_path, 'w')
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         logger.info('另一个 worker 已持有调度器锁，跳过初始化')
+        lock_fd.close()
         return
+    _scheduler_lock_fd = lock_fd
 
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -662,7 +534,7 @@ def _init_scheduler():
 
 @app.route('/push/<chain_name>', methods=['GET'])
 def push_chain(chain_name):
-    _ensure_imported()
+    _runner.ensure_imported()
     if chain_name not in CHAINS_CONFIG:
         return jsonify({"error": f"unknown chain: {chain_name}"}), 400
 

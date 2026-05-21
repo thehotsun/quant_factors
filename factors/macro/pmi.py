@@ -20,6 +20,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
+from core.macro_calendar import available_asof, latest_period_date, latest_release_date
 
 
 @FactorRegistry.register(
@@ -34,21 +35,33 @@ class PMIFactor(BaseFactor):
             "pmi_change": None, "pmi_direction": None,
             "consecutive_up": 0, "consecutive_down": 0,
             "cycle_phase": None,
+            "factor_value": None,
+            "period_date": None,
+            "release_date": None,
         }
 
-        df = self.load("pmi")
+        df = available_asof(self.load("pmi"), "pmi", self.params.get("as_of"))
         if df is None or len(df) < 3:
             return result
 
         col = 'value' if 'value' in df.columns else 'pmi'
         if col not in df.columns:
+            for candidate in ['制造业-指数', '制造业PMI']:
+                if candidate in df.columns:
+                    col = candidate
+                    break
+        if col not in df.columns:
             return result
+
+        result["period_date"] = latest_period_date(df)
+        result["release_date"] = latest_release_date(df)
 
         recent = df.tail(6)
         values = recent[col].astype(float).values
 
         result["current_pmi"] = round(float(values[-1]), 1)
         result["prev_pmi"] = round(float(values[-2]), 1)
+        result["factor_value"] = result["current_pmi"]
         result["pmi_change"] = round(result["current_pmi"] - result["prev_pmi"], 1)
 
         if result["pmi_change"] > 0:
@@ -100,6 +113,8 @@ class PMIFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.05, confidence=0.65,
                 strength=0.65, trigger="pmi_expansion_confirmed",
                 pmi=pmi, consecutive_up=consecutive_up, cycle_phase=phase,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=pmi,
             )
 
         if phase == "收缩收窄→关注拐点":
@@ -109,6 +124,8 @@ class PMIFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.05, confidence=0.50,
                 strength=0.50, trigger="pmi_contraction_narrowing",
                 pmi=pmi, consecutive_up=consecutive_up, cycle_phase=phase,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=pmi,
             )
 
         if phase == "收缩确认→防御为主":
@@ -118,6 +135,8 @@ class PMIFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.03, confidence=0.55,
                 strength=-0.55, trigger="pmi_contraction_confirmed",
                 pmi=pmi, consecutive_down=consecutive_down, cycle_phase=phase,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=pmi,
             )
         return None
 

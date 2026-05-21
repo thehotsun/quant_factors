@@ -22,6 +22,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
+from core.macro_calendar import available_asof, latest_period_date, latest_release_date
 
 
 @FactorRegistry.register(
@@ -35,21 +36,33 @@ class CPIFactor(BaseFactor):
             "current_cpi": None, "prev_cpi": None,
             "cpi_change": None, "cpi_trend": None,
             "inflation_regime": None,
+            "factor_value": None,
+            "period_date": None,
+            "release_date": None,
         }
 
-        df = self.load("cpi")
+        df = available_asof(self.load("cpi"), "cpi", self.params.get("as_of"))
         if df is None or len(df) < 3:
             return result
 
         col = 'value' if 'value' in df.columns else 'cpi'
         if col not in df.columns:
+            for candidate in ['全国-同比增长', '全国-当月']:
+                if candidate in df.columns:
+                    col = candidate
+                    break
+        if col not in df.columns:
             return result
+
+        result["period_date"] = latest_period_date(df)
+        result["release_date"] = latest_release_date(df)
 
         recent = df.tail(6)
         values = recent[col].astype(float).values
 
         result["current_cpi"] = round(float(values[-1]), 1)
         result["prev_cpi"] = round(float(values[-2]), 1)
+        result["factor_value"] = result["current_cpi"]
         result["cpi_change"] = round(result["current_cpi"] - result["prev_cpi"], 1)
 
         if result["cpi_change"] > 0.3:
@@ -94,6 +107,8 @@ class CPIFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.05, confidence=0.55,
                 strength=0.55, trigger="cpi_moderate_inflation",
                 cpi=cpi, inflation_regime=regime,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=cpi,
             )
 
         if "恶性通胀" in str(regime):
@@ -103,6 +118,8 @@ class CPIFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.03, confidence=0.60,
                 strength=-0.60, trigger="cpi_hyperinflation",
                 cpi=cpi, inflation_regime=regime,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=cpi,
             )
 
         if "通缩" in str(regime):
@@ -112,6 +129,8 @@ class CPIFactor(BaseFactor):
                 holding_days=30, stop_loss=-0.03, confidence=0.55,
                 strength=-0.55, trigger="cpi_deflation",
                 cpi=cpi, inflation_regime=regime,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=cpi,
             )
         return None
 

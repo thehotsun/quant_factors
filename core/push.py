@@ -170,18 +170,29 @@ _KEY_ASSETS = {
 }
 
 
-def _get_price_trend(data_bus, data_dep: str, days: int = 5) -> Optional[list]:
-    """获取最近 N 天的收盘价列表"""
+def _get_close_prices(data_bus, data_dep: str) -> Optional[List[float]]:
+    """读取并清洗收盘价序列。"""
     try:
         df = data_bus.get(data_dep)
         if df is None or df.empty or 'close' not in df.columns:
             return None
-        recent = df.tail(days)['close'].tolist()
-        if len(recent) < 2:
-            return None
-        return [float(x) for x in recent]
+        prices = []
+        for value in df['close'].dropna().tolist():
+            try:
+                prices.append(float(value))
+            except (TypeError, ValueError):
+                continue
+        return prices or None
     except Exception:
         return None
+
+
+def _get_price_trend(data_bus, data_dep: str, days: int = 5) -> Optional[List[float]]:
+    """获取最近 N 天的收盘价列表。"""
+    prices = _get_close_prices(data_bus, data_dep)
+    if not prices or len(prices) < 2:
+        return None
+    return prices[-days:]
 
 
 def _format_trend(prices: list) -> str:
@@ -193,6 +204,58 @@ def _format_trend(prices: list) -> str:
     pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
     price_str = " → ".join(f"{p:.0f}" if abs(p) >= 100 else f"{p:.2f}" for p in prices)
     return f"{price_str} {arrow} ({pct:+.1f}%)"
+
+
+def _period_label(days: int) -> str:
+    if days >= 200:
+        return "近1年"
+    if days >= 100:
+        return "近半年"
+    if days >= 40:
+        return "近2个月"
+    return f"近{days}天"
+
+
+def _position_label(percentile: float) -> str:
+    if percentile <= 20:
+        return "接近底部区间"
+    if percentile <= 40:
+        return "偏低区间"
+    if percentile <= 60:
+        return "中等水平"
+    if percentile <= 80:
+        return "偏高区间"
+    return "接近顶部区间"
+
+
+def _get_price_position(data_bus, data_dep: str, lookback_days: int = 250) -> Optional[Dict[str, Any]]:
+    """计算当前价格在历史中的分位位置。"""
+    prices = _get_close_prices(data_bus, data_dep)
+    if not prices or len(prices) < 20:
+        return None
+
+    hist = prices[-lookback_days:]
+    current = prices[-1]
+    percentile = float(sum(price < current for price in hist) / len(hist) * 100)
+
+    return {
+        "percentile": round(percentile, 1),
+        "current_price": current,
+        "sample_days": len(hist),
+    }
+
+
+def _format_price_position(data_bus, data_dep: str, lookback_days: int = 250) -> str:
+    """格式化历史价格位置描述"""
+    pos = _get_price_position(data_bus, data_dep, lookback_days)
+    if pos is None:
+        return ""
+    
+    cheaper_pct = pos["percentile"]
+    period = _period_label(pos["sample_days"])
+    label = _position_label(cheaper_pct)
+
+    return f"📍 {period}：仅{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
 
 
 def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> str:
@@ -216,7 +279,7 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
     else:
         lines.append("⚪ 综合信号: HOLD（无有效信号）")
 
-    # 近5日价格趋势
+    # 近5日价格趋势 + 历史位置
     if data_bus is not None:
         key_assets = _KEY_ASSETS.get(chain_name, [])
         trend_lines = []
@@ -224,7 +287,12 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
             prices = _get_price_trend(data_bus, data_dep)
             if prices:
                 trend_str = _format_trend(prices)
-                trend_lines.append(f"- {label}: {trend_str}")
+                # 历史分位
+                pos_str = _format_price_position(data_bus, data_dep)
+                line = f"- {label}: {trend_str}"
+                if pos_str:
+                    line += f"\n  {pos_str}"
+                trend_lines.append(line)
         if trend_lines:
             lines.append("")
             lines.append("📊 **近5日价格:**")
@@ -309,13 +377,6 @@ def init_push_channels(config: Dict[str, Any] = None):
         elif ch_type == "console":
             manager.add_channel(ConsolePush())
             logger.info("已配置控制台输出")
-        elif ch_type == "feishu":
-            webhook = ch_cfg.get("webhook_url", "")
-            if webhook:
-                manager.add_channel(FeishuPush(webhook))
-                logger.info(f"已配置飞书推送: {webhook[:50]}...")
-        elif ch_type == "console":
-            manager.add_channel(ConsolePush())
 
     if not manager._channels:
         manager.add_channel(ConsolePush())

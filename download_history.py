@@ -1,18 +1,17 @@
 import akshare as ak
-import tushare as ts
 import pandas as pd
 import requests
 from pathlib import Path
 import os
 import time
+from core.config import get_tushare_pro
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
 
-# Tushare 配置
-TUSHARE_TOKEN = "165fb826f4b6e41aeb37ef84b7f4c99df784cbfec771ee139dfae048"
-ts.set_token(TUSHARE_TOKEN)
-pro = ts.pro_api()
+
+def _pro():
+    return get_tushare_pro()
 
 
 def save_parquet(df, name):
@@ -216,7 +215,7 @@ def fetch_pboc_social_financing():
 def fetch_tushare_futures(ts_code, name, start_date="20200101"):
     """从 Tushare 获取期货主力合约日线数据"""
     try:
-        df = pro.fut_daily(ts_code=ts_code, start_date=start_date)
+        df = _pro().fut_daily(ts_code=ts_code, start_date=start_date)
         if df is not None and not df.empty:
             # 重命名列以匹配原有格式
             df = df.rename(columns={

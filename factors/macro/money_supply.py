@@ -24,6 +24,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
+from core.macro_calendar import available_asof, latest_period_date, latest_release_date
 
 
 @FactorRegistry.register(
@@ -33,14 +34,19 @@ from core.factor_registry import FactorRegistry
 )
 class MoneySupplyFactor(BaseFactor):
     def calculate(self) -> Dict[str, Any]:
-        result = {"m2_yoy": None, "m2_change": None, "trend": None}
+        result = {
+            "m2_yoy": None, "m2_change": None, "trend": None,
+            "factor_value": None,
+            "period_date": None,
+            "release_date": None,
+        }
 
-        df = self.load("m2")
+        df = available_asof(self.load("m2"), "m2", self.params.get("as_of"))
         if df is None:
             return result
 
         col = None
-        for candidate in ['value', 'm2', 'M2']:
+        for candidate in ['value', 'm2', 'M2', '货币和准货币(M2)-同比增长']:
             if candidate in df.columns:
                 col = candidate
                 break
@@ -52,9 +58,12 @@ class MoneySupplyFactor(BaseFactor):
         if col is None:
             return result
         if len(df) >= 2:
+            result["period_date"] = latest_period_date(df)
+            result["release_date"] = latest_release_date(df)
             current = self._safe_float(df.tail(1), -1, col=col)
             previous = self._safe_float(df.tail(2), -2, col=col)
             result["m2_yoy"] = current
+            result["factor_value"] = current
             result["m2_change"] = round(current - previous, 2) if current and previous else None
 
         if len(df) >= 6:
@@ -85,6 +94,8 @@ class MoneySupplyFactor(BaseFactor):
                 reason=f"M2增速{m2}%>12%且加速上行，流动性充裕→权益受益",
                 holding_days=20, stop_loss=-0.03, confidence=0.65,
                 strength=0.7, trigger="m2_surge", m2_yoy=m2, trend=trend,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=m2,
             )
 
         if m2 < 8 and trend == "加速下行":
@@ -93,6 +104,8 @@ class MoneySupplyFactor(BaseFactor):
                 reason=f"M2增速{m2}%<8%且加速下行，流动性收紧→权益承压",
                 holding_days=15, stop_loss=-0.03, confidence=0.60,
                 strength=-0.6, trigger="m2_tight", m2_yoy=m2, trend=trend,
+                period_date=data.get("period_date"), release_date=data.get("release_date"),
+                factor_value=m2,
             )
         return None
 
