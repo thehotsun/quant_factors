@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify
 
 from datetime import datetime
@@ -8,9 +7,9 @@ import logging
 from core.factor_runner import FactorRunner
 from core.data_refresh import daily_data_refresh, daily_data_refresh_foreign
 from core.scheduler import init_scheduler
+from core.composite_runner import run_composite_chain
 
 from core.factor_registry import FactorRegistry
-from core.signal_aggregator import SignalAggregator
 from core.data_bus import DataBus
 from core.signal_logger import SignalLogger
 from core.push import get_push_manager, init_push_channels, format_signal_report
@@ -84,54 +83,12 @@ def analyze_auto(chain):
 
 
 def _run_composite_chain(chain_name):
-    _runner.ensure_imported()
-    cfg = CHAINS_CONFIG.get(chain_name, {})
-    sub_chains = cfg.get("sub_chains", [])
-    description = cfg.get("description", "")
-    results = {}
-    signals = []
-
-    with ThreadPoolExecutor(max_workers=min(8, len(sub_chains))) as executor:
-        future_map = {executor.submit(_run_factor_chain, name): name for name in sub_chains}
-        for future in as_completed(future_map):
-            chain_name_item = future_map[future]
-            try:
-                result = future.result()
-                if result:
-                    results[chain_name_item] = {
-                        "description": CHAINS_CONFIG.get(chain_name_item, {}).get("description", ""),
-                        "factor_data": result["factor_data"],
-                        "opportunity": result["opportunity"],
-                        "signal_strength": result.get("signal_strength"),
-                    }
-                    if result.get("error"):
-                        results[chain_name_item]["error"] = result["error"]
-                        results[chain_name_item]["error_type"] = result.get("error_type")
-                    if result["opportunity"]:
-                        sig = dict(result["opportunity"])
-                        sig["_chain"] = chain_name_item
-                        signals.append(sig)
-                else:
-                    logger.warning(f"综合链子链条 {chain_name_item} 返回None（因子实例化失败或chains.yaml配置错误）")
-                    results[chain_name_item] = {"error": "因子实例化失败", "error_type": "InstantiationError"}
-            except Exception as e:
-                results[chain_name_item] = {"error": str(e), "error_type": type(e).__name__}
-
-    aggregated = SignalAggregator.aggregate(signals, method="weighted") if signals else None
-
-    all_failed = len(results) > 0 and all(r.get("error") for r in results.values())
-
-    return jsonify({
-        "chain": chain_name,
-        "description": description,
-        "active_signals": signals,
-        "signal_count": len(signals),
-        "aggregated_signal": aggregated,
-        "all_results": results,
-        "all_sub_chains_failed": all_failed,
-        "error": "所有子链条均计算失败" if all_failed else None,
-        "timestamp": datetime.now().isoformat()
-    })
+    return jsonify(run_composite_chain(
+        chain_name,
+        CHAINS_CONFIG,
+        _run_factor_chain,
+        ensure_imported=_runner.ensure_imported,
+    ))
 
 
 @app.route('/analyze/full_meat_chain', methods=['GET'])
