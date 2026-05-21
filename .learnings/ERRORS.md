@@ -103,3 +103,26 @@ A naive full-chain regression called `/analyze/<chain>` for every chain in `chai
 **Priority**: low
 
 Tried to stage `data/cbot_soybean.parquet`, but data files are intentionally ignored. Do not force-add generated market data unless explicitly requested; commit the fetch/refresh code instead.
+
+## [ERR-20260521-001] api_smoke_databus_path_mismatch
+
+**Logged**: 2026-05-21T21:31:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests/backend
+
+### Summary
+API smoke tests failed because `DataBus` singleton was initialized with an absolute data directory, while server or factor instantiation paths still used the relative default `data`/`./data`.
+
+### Details
+During full regression, `/analyze/<chain>` returned 400 with `DataBus 已用 data_dir=... 初始化，不能切换为 data_dir=data` for most chains. The issue came from inconsistent data directory paths between server initialization and factor instantiation/testing.
+
+### Suggested Action
+Use one canonical absolute `DATA_DIR` path everywhere in the server runtime and tests to avoid DataBus singleton path conflicts. If tests need isolation, reset `DataBus` deliberately between cases.
+
+### Metadata
+- Source: conversation
+- Related Files: server.py, tests/test_api_smoke.py, core/data_bus.py
+- Tags: databus, tests, singleton, path-consistency
+
+---

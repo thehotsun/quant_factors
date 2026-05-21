@@ -8,18 +8,20 @@ from core.factor_runner import FactorRunner
 from core.data_refresh import daily_data_refresh, daily_data_refresh_foreign
 from core.scheduler import init_scheduler
 from core.composite_runner import run_composite_chain
+from core.ic_service import compute_daily_ic
+from core.push_service import send_chain_push, push_daily_composite_reports
 
 from core.factor_registry import FactorRegistry
 from core.data_bus import DataBus
 from core.signal_logger import SignalLogger
-from core.push import get_push_manager, init_push_channels, format_signal_report
+from core.push import init_push_channels
 from evaluation.ic_monitor import ICMonitor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-DATA_DIR = Path("./data")
+DATA_DIR = Path(__file__).parent / "data"
 
 try:
     with open(Path(__file__).parent / "config" / "chains.yaml", "r", encoding="utf-8") as f:
@@ -280,65 +282,16 @@ def _daily_data_refresh_foreign():
 
 
 def _daily_ic_compute():
-    """定时任务：每日 IC 计算"""
-    logger.info("开始每日 IC 计算...")
-    _runner.ensure_imported()
-
-    _MONTHLY_SOURCES = {"cpi", "pmi", "m2", "social_financing", "us_cpi"}
-
-    computed = 0
-    for chain_name, cfg in CHAINS_CONFIG.items():
-        if cfg.get("category") == "composite":
-            continue
-        data_deps = cfg.get("data_deps", [])
-        if not data_deps:
-            continue
-        if data_deps[0] in _MONTHLY_SOURCES:
-            continue
-        price_df = _data_bus.get(data_deps[0])
-        if price_df is None or len(price_df) < 20:
-            continue
-        try:
-            result = _ic_monitor.compute_ic(chain_name, price_df)
-            if result:
-                computed += 1
-        except Exception as e:
-            logger.warning(f"  {chain_name} IC 计算失败: {e}")
-    logger.info(f"每日 IC 计算完成，共计算 {computed} 个因子")
+    return compute_daily_ic(
+        CHAINS_CONFIG,
+        _data_bus,
+        _ic_monitor,
+        _runner.ensure_imported,
+    )
 
 
 def _daily_push():
-    """定时任务：每日推送分析结论（18:35执行，在数据刷新和IC计算之后）"""
-    logger.info("开始每日分析推送...")
-    with app.app_context():
-        composite_chains = [
-            name for name, cfg in CHAINS_CONFIG.items()
-            if cfg.get("category") == "composite"
-        ]
-
-        if not composite_chains:
-            logger.warning("未配置综合链条，跳过推送")
-            return
-
-        push_mgr = get_push_manager()
-        success_count = 0
-        for chain_name in composite_chains:
-            try:
-                result = _run_composite_chain(chain_name)
-                if hasattr(result, 'get_json'):
-                    result_data = result.get_json()
-                else:
-                    import json as _json
-                    result_data = _json.loads(result.get_data(as_text=True))
-                content = format_signal_report(result_data, _data_bus)
-                title = f"量化分析日报 - {chain_name}"
-                push_result = push_mgr.send(title, content)
-                if any(push_result.values()):
-                    success_count += 1
-            except Exception as e:
-                logger.error(f"推送 {chain_name} 失败: {e}")
-
-        logger.info(f"每日推送完成: {success_count}/{len(composite_chains)} 个链条推送成功")
+    return push_daily_composite_reports(app, CHAINS_CONFIG, _run_composite_chain, _data_bus)
 
 
 
@@ -372,23 +325,7 @@ def push_chain(chain_name):
             "timestamp": datetime.now().isoformat()
         })
 
-    if hasattr(result, 'get_json'):
-        result_data = result.get_json()
-    else:
-        import json as _json
-        result_data = _json.loads(result.get_data(as_text=True))
-
-    content = format_signal_report(result_data, _data_bus)
-    title = f"量化分析 - {chain_name}"
-    push_mgr = get_push_manager()
-    push_result = push_mgr.send(title, content)
-
-    return jsonify({
-        "chain": chain_name,
-        "push_result": push_result,
-        "content": content,
-        "timestamp": datetime.now().isoformat()
-    })
+    return jsonify(send_chain_push(chain_name, cfg, result, _data_bus))
 
 
 # 初始化（gunicorn import 时自动执行）
