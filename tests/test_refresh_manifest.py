@@ -59,10 +59,14 @@ class RefreshManifestTest(unittest.TestCase):
             def fake_pboc():
                 return sample
 
+            def fake_pork_far(*args, **kwargs):
+                return sample
+
             with patch("core.data_refresh.REFRESH_MANIFEST_PATH", manifest_path), \
                  patch("core.data_refresh.retry_fetch", side_effect=lambda name, fetcher, max_retries=3, base_delay=2: fetcher()), \
                  patch("download_history.save_parquet", side_effect=fake_save_parquet), \
                  patch("download_history.fetch_tushare_futures", side_effect=fake_tushare), \
+                 patch("download_history.fetch_pork_futures_far", side_effect=fake_pork_far), \
                  patch("download_history.fetch_pboc_social_financing", side_effect=fake_pboc), \
                  patch("core.data_refresh.ak.macro_china_pmi", return_value=sample), \
                  patch("core.data_refresh.ak.macro_china_cpi", return_value=sample), \

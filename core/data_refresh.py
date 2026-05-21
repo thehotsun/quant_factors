@@ -74,10 +74,11 @@ def daily_data_refresh(data_bus):
     """定时任务：每日数据刷新（国内品种，18:00执行）。"""
     logger.info("开始每日数据刷新（国内品种）...")
     try:
-        from download_history import save_parquet, fetch_tushare_futures, fetch_pboc_social_financing
+        from download_history import save_parquet, fetch_tushare_futures, fetch_pboc_social_financing, fetch_pork_futures_far
 
         tasks = [
             ("生猪期货", lambda: fetch_tushare_futures("LH.DCE", "生猪期货"), "pork_futures"),
+            ("生猪远月/主力期货代理", fetch_pork_futures_far, "pork_futures_far"),
             ("鸡蛋期货", lambda: fetch_tushare_futures("JD.DCE", "鸡蛋期货"), "egg_futures"),
             ("豆粕期货", lambda: fetch_tushare_futures("M.DCE", "豆粕期货"), "soybean_meal_futures"),
             ("玉米期货", lambda: fetch_tushare_futures("C.DCE", "玉米期货"), "corn_futures"),

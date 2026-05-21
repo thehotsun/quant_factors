@@ -266,6 +266,39 @@ def fetch_pboc_social_financing():
         return None
 
 
+def fetch_pork_futures_far(start_day="20240101", end_day=None):
+    """Fetch pork futures far/dominant contract proxy from basis data.
+
+    AKShare's 100ppi basis endpoint exposes the daily dominant LH contract and
+    settlement price.  This is not a full contract-chain continuous far-month
+    construction yet, but it is a stable observable series for term-structure
+    work and is preferable to a missing dependency.
+    """
+    try:
+        if end_day is None:
+            end_day = pd.Timestamp.today().strftime("%Y%m%d")
+        df = ak.futures_spot_price_daily(start_day=start_day, end_day=end_day, vars_list=["LH"])
+        if df is None or df.empty:
+            print("  生猪远月/主力期货基差数据为空")
+            return None
+        result = df.copy()
+        result["date"] = pd.to_datetime(result["date"].astype(str), format="%Y%m%d", errors="coerce")
+        result["close"] = pd.to_numeric(result["dominant_contract_price"], errors="coerce")
+        result["spot_price"] = pd.to_numeric(result.get("spot_price"), errors="coerce")
+        result["basis"] = pd.to_numeric(result.get("dom_basis"), errors="coerce")
+        result["basis_rate"] = pd.to_numeric(result.get("dom_basis_rate"), errors="coerce")
+        result["contract"] = result.get("dominant_contract")
+        result["source"] = "akshare.futures_spot_price_daily:LH.dominant_contract_price"
+        keep = ["date", "close", "contract", "spot_price", "basis", "basis_rate", "source"]
+        result = result[keep].dropna(subset=["date", "close"]).sort_values("date")
+        result.reset_index(drop=True, inplace=True)
+        print(f"  生猪远月/主力期货代理: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        return result
+    except Exception as e:
+        print(f"  生猪远月/主力期货代理下载失败: {e}")
+        return None
+
+
 def fetch_tushare_futures(ts_code, name, start_date="20200101"):
     """从 Tushare 获取期货主力合约日线数据"""
     try:
@@ -322,10 +355,18 @@ def main():
             save_parquet(df, filename)
         time.sleep(0.5)  # 避免频率限制
 
+    print("17. 生猪远月/主力期货代理")
+    try:
+        far = fetch_pork_futures_far()
+        if far is not None:
+            save_parquet(far, "pork_futures_far")
+    except Exception as e:
+        print(f"  生猪远月/主力期货代理下载失败: {e}")
+
     # ==================== 宏观数据（AKShare）====================
     print("\n--- 宏观数据（AKShare）---")
 
-    print("17. USD/CNY汇率")
+    print("18. USD/CNY汇率")
     try:
         forex = fetch_fred_csv("DEXCHUS", "USD/CNY汇率")
         if forex is not None:
@@ -333,28 +374,28 @@ def main():
     except Exception as e:
         print(f"  汇率下载失败: {e}")
 
-    print("18. 中国CPI")
+    print("19. 中国CPI")
     try:
         cpi = ak.macro_china_cpi()
         save_parquet(cpi, "cpi")
     except Exception as e:
         print(f"  CPI下载失败: {e}")
 
-    print("19. 中国PMI")
+    print("20. 中国PMI")
     try:
         pmi = ak.macro_china_pmi()
         save_parquet(pmi, "pmi")
     except Exception as e:
         print(f"  PMI下载失败: {e}")
 
-    print("20. M2货币供应量")
+    print("21. M2货币供应量")
     try:
         m2 = ak.macro_china_money_supply()
         save_parquet(m2, "m2")
     except Exception as e:
         print(f"  M2下载失败: {e}")
 
-    print("21. 社融规模增量")
+    print("22. 社融规模增量")
     try:
         sf = fetch_pboc_social_financing()
         if sf is not None:
@@ -436,7 +477,6 @@ def main():
     # ==================== 暂不支持的数据 ====================
     print("\n--- 暂不支持的数据 ---")
     print("  鸡肉现货 - 接口已变更，尚未找到稳定历史源")
-    print("  生猪远月期货 - 需要合约链/远月连续口径，尚未接入")
 
     print("\n历史数据下载完成！")
 
