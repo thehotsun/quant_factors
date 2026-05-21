@@ -17,6 +17,7 @@ FACTOR_PARAMS_PATH = CONFIG_DIR / "factor_params.yaml"
 PUSH_CONFIG_PATH = CONFIG_DIR / "push.yaml"
 SIGNALS_DB_PATH = DATA_DIR / "signals.db"
 IC_DB_PATH = DATA_DIR / "ic_monitor.db"
+REFRESH_MANIFEST_PATH = DATA_DIR / "refresh_manifest.json"
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:

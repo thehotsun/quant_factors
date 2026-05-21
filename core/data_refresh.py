@@ -8,6 +8,9 @@ from typing import Callable, Optional
 import akshare as ak
 import pandas as pd
 
+from core.refresh_manifest import RefreshManifest
+from core.settings import REFRESH_MANIFEST_PATH
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +45,15 @@ def fetch_cbot_soybean() -> Optional[pd.DataFrame]:
     except Exception as e:
         logger.warning("CBOT大豆下载失败: %s", e)
         return None
+
+
+def first_valid_frame(*fetchers: Callable[[], Optional[pd.DataFrame]]) -> Optional[pd.DataFrame]:
+    """Return the first non-empty DataFrame from a sequence of fetchers."""
+    for fetcher in fetchers:
+        df = fetcher()
+        if df is not None and not df.empty:
+            return df
+    return None
 
 
 def retry_fetch(name: str, fetcher: Callable[[], pd.DataFrame], max_retries: int = 3,
@@ -85,17 +97,25 @@ def daily_data_refresh(data_bus):
             ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
             ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
             ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
-            ("社融规模", lambda: fetch_pboc_social_financing() or ak.macro_china_shrzgm(), "social_financing"),
+            ("社融规模", lambda: first_valid_frame(fetch_pboc_social_financing, ak.macro_china_shrzgm), "social_financing"),
         ]
 
         failed = 0
+        manifest = RefreshManifest(REFRESH_MANIFEST_PATH, "daily_domestic")
         for name, fetcher, filename in tasks:
+            df = None
             try:
                 df = retry_fetch(name, fetcher)
-                save_parquet(df, filename)
-                logger.info("  %s 刷新成功", name)
+                wrote = save_parquet(df, filename)
+                if wrote:
+                    manifest.record(name=name, filename=filename, status="success", df=df, wrote=True)
+                    logger.info("  %s 刷新成功", name)
+                else:
+                    manifest.record(name=name, filename=filename, status="skipped", df=df, wrote=False)
+                    logger.warning("  %s 刷新跳过（无有效数据）", name)
             except Exception as e:
                 failed += 1
+                manifest.record(name=name, filename=filename, status="failed", df=df, error=str(e), wrote=False)
                 logger.warning("  %s 刷新失败（已重试3次）: %s", name, e)
 
         if failed == len(tasks):
@@ -104,6 +124,7 @@ def daily_data_refresh(data_bus):
             logger.warning("国内数据刷新部分失败: %d/%d", failed, len(tasks))
 
         data_bus.invalidate()
+        manifest.write()
         logger.info("每日数据刷新（国内品种）完成")
     except Exception as e:
         logger.error("每日数据刷新异常: %s", e)
@@ -120,19 +141,27 @@ def daily_data_refresh_foreign(data_bus):
             ("CBOT大豆", fetch_cbot_soybean, "cbot_soybean"),
             ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
             ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
-            ("布伦特原油", lambda: fetch_brent_oil() or ak.energy_oil_hist(), "brent_oil"),
-            ("EIA原油库存", lambda: fetch_eia_crude_stock() or ak.macro_usa_eia_crude_rate(), "eia_crude_stock"),
+            ("布伦特原油", lambda: first_valid_frame(fetch_brent_oil, ak.energy_oil_hist), "brent_oil"),
+            ("EIA原油库存", lambda: first_valid_frame(fetch_eia_crude_stock, ak.macro_usa_eia_crude_rate), "eia_crude_stock"),
             ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
         ]
 
         failed = 0
+        manifest = RefreshManifest(REFRESH_MANIFEST_PATH, "daily_foreign")
         for name, fetcher, filename in tasks:
+            df = None
             try:
                 df = retry_fetch(name, fetcher)
-                save_parquet(df, filename)
-                logger.info("  %s 刷新成功", name)
+                wrote = save_parquet(df, filename)
+                if wrote:
+                    manifest.record(name=name, filename=filename, status="success", df=df, wrote=True)
+                    logger.info("  %s 刷新成功", name)
+                else:
+                    manifest.record(name=name, filename=filename, status="skipped", df=df, wrote=False)
+                    logger.warning("  %s 刷新跳过（无有效数据）", name)
             except Exception as e:
                 failed += 1
+                manifest.record(name=name, filename=filename, status="failed", df=df, error=str(e), wrote=False)
                 logger.warning("  %s 刷新失败（已重试3次）: %s", name, e)
 
         if failed == len(tasks):
@@ -141,6 +170,7 @@ def daily_data_refresh_foreign(data_bus):
             logger.warning("外盘数据刷新部分失败: %d/%d", failed, len(tasks))
 
         data_bus.invalidate()
+        manifest.write()
         logger.info("外盘数据刷新完成")
     except Exception as e:
         logger.error("外盘数据刷新异常: %s", e)
