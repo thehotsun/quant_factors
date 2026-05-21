@@ -89,6 +89,8 @@ class FactorRunner:
             return
         for module_name in collect_factor_modules(self.chains_config):
             importlib.import_module(module_name)
+        from core.factor_registry import FactorRegistry
+        FactorRegistry.sync_from_chains(self.chains_config)
         self._imported = True
 
     def instantiate(self, chain_name: str):

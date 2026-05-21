@@ -82,6 +82,8 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
             report["summary"]["errors"] += 1
         report["modules"].append(item)
 
+    FactorRegistry.sync_from_chains(chains)
+
     DataBus.reset()
     for name, cfg in chains.items():
         item: Dict[str, Any] = {

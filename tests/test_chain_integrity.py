@@ -68,8 +68,23 @@ class ChainIntegrityTest(unittest.TestCase):
     def test_registry_populated_by_configured_modules(self):
         for module_name in collect_factor_modules(self.chains):
             importlib.import_module(module_name)
+        FactorRegistry.sync_from_chains(self.chains)
         registered = FactorRegistry.list_all()
         self.assertGreaterEqual(len(registered), 1)
+
+    def test_registry_metadata_matches_chains_after_sync(self):
+        for module_name in collect_factor_modules(self.chains):
+            importlib.import_module(module_name)
+        FactorRegistry.sync_from_chains(self.chains)
+        for chain_name, cfg in self.chains.items():
+            if cfg.get("category") == "composite":
+                continue
+            info = FactorRegistry.info(chain_name)
+            self.assertIsNotNone(info)
+            self.assertEqual(info["category"], cfg.get("category", ""))
+            self.assertEqual(info["description"], cfg.get("description", ""))
+            self.assertEqual(info["asset"], cfg.get("asset", ""))
+            self.assertEqual(info["data_deps"], cfg.get("data_deps", []))
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ app = Flask(__name__)
 
 try:
     CHAINS_CONFIG = load_chains_config()
+    FactorRegistry.sync_from_chains(CHAINS_CONFIG)
 except Exception as e:
     raise SystemExit(f"无法加载 chains.yaml: {e}")
 
