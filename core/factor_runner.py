@@ -156,7 +156,7 @@ class FactorRunner:
             try:
                 fv = extract_factor_value(data, chain_name)
                 if fv is not None:
-                    self.ic_monitor.snapshot(chain_name, fv, strength)
+                    self.ic_monitor.snapshot(chain_name, fv, strength, snapshot_date=today)
                 else:
                     logger.debug("因子 %s 无有效因子值，跳过 IC 快照", chain_name)
             except Exception as e:

@@ -63,8 +63,9 @@ class ICMonitor:
         conn.close()
 
     def snapshot(self, factor_name: str, factor_value: float,
-                 signal_strength: Optional[float] = None):
-        today = datetime.now().strftime("%Y-%m-%d")
+                 signal_strength: Optional[float] = None,
+                 snapshot_date: Optional[str] = None):
+        today = snapshot_date or datetime.now().strftime("%Y-%m-%d")
         try:
             conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
             conn.execute(
@@ -123,6 +124,11 @@ class ICMonitor:
         if len(fv) < 10:
             return None
 
+        sample_dates = list(fv.index)
+        forward_end_dates = [d + pd.Timedelta(days=forward_days) for d in sample_dates]
+        price_index = prices.index
+        available_forward_end_dates = [d for d in forward_end_dates if d in price_index]
+
         ic, p_value = stats.spearmanr(fv, fr)
         ic = float(ic)
         p_value = float(p_value)
@@ -138,6 +144,16 @@ class ICMonitor:
             "sample_size": len(fv),
             "forward_days": forward_days,
             "window": window,
+            "date_audit": {
+                "snapshot_start": sample_dates[0].strftime("%Y-%m-%d"),
+                "snapshot_end": sample_dates[-1].strftime("%Y-%m-%d"),
+                "forward_return_start": forward_end_dates[0].strftime("%Y-%m-%d"),
+                "forward_return_end": forward_end_dates[-1].strftime("%Y-%m-%d"),
+                "price_start": prices.index.min().strftime("%Y-%m-%d") if hasattr(prices.index.min(), "strftime") else str(prices.index.min()),
+                "price_end": prices.index.max().strftime("%Y-%m-%d") if hasattr(prices.index.max(), "strftime") else str(prices.index.max()),
+                "price_col": price_col,
+                "forward_dates_available": len(available_forward_end_dates),
+            },
             "status": self._ic_status(ic),
         }
 

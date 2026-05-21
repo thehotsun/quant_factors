@@ -58,6 +58,9 @@ class FactorRunnerLoggingTest(unittest.TestCase):
             self.assertEqual(args[0], "momentum")
             self.assertRegex(kwargs["as_of"], r"^\d{4}-\d{2}-\d{2}$")
             self.assertEqual(kwargs["run_id"], f"momentum:{kwargs['as_of']}")
+            self.assertEqual(len(runner.ic_monitor.snapshots), 1)
+            _, ic_kwargs = runner.ic_monitor.snapshots[0]
+            self.assertEqual(ic_kwargs["snapshot_date"], kwargs["as_of"])
 
 
 if __name__ == "__main__":
