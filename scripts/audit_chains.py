@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from core.factor_runner import collect_factor_modules, normalize_factor_data  # noqa: E402
 from core.data_bus import DataBus  # noqa: E402
 from core.factor_registry import FactorRegistry  # noqa: E402
+from core.price_schema import collect_price_dependencies, inspect_price_dependencies  # noqa: E402
 from core.settings import load_chains_config  # noqa: E402
 
 
@@ -69,8 +70,21 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
             "unexpected_missing_deps": 0,
         },
         "modules": [],
+        "price_schema": {
+            "summary": {
+                "price_dependencies": 0,
+                "missing": 0,
+                "invalid": 0,
+                "legacy_close": 0,
+                "explicit_price_columns": 0,
+            },
+            "items": [],
+        },
         "chains": [],
     }
+
+    price_deps = collect_price_dependencies(chains)
+    report["price_schema"] = inspect_price_dependencies(ROOT / "data", price_deps)
 
     for module_name in modules:
         item = {"module": module_name, "ok": True, "error": None}
@@ -187,6 +201,18 @@ def main() -> int:
             f"known_missing_deps={summary.get('known_missing_deps', 0)} "
             f"unexpected_missing_deps={summary.get('unexpected_missing_deps', 0)}"
         )
+        price_summary = report.get("price_schema", {}).get("summary", {})
+        print(
+            f"price_schema price_dependencies={price_summary.get('price_dependencies', 0)} "
+            f"missing={price_summary.get('missing', 0)} invalid={price_summary.get('invalid', 0)} "
+            f"legacy_close={price_summary.get('legacy_close', 0)} "
+            f"explicit_price_columns={price_summary.get('explicit_price_columns', 0)}"
+        )
+        for item in report.get("price_schema", {}).get("items", []):
+            if item.get("errors"):
+                print(f"- PRICE {item['name']}")
+                for msg in item.get("errors", []):
+                    print(f"  ERROR: {msg}")
         for item in report["chains"]:
             if item.get("errors") or item.get("warnings") or item.get("metadata_diffs"):
                 print(f"- {item['chain']} [{item.get('category')}]")
