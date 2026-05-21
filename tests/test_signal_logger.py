@@ -45,10 +45,10 @@ class SignalLoggerContextTest(unittest.TestCase):
             self.assertEqual(float(row["signal_strength"]), 0.8)
             self.assertEqual(row["as_of"], "2026-04-15")
 
-            self.assertEqual(json.loads(row["signal_json"])["meta"]["source"], "unit-test")
-            self.assertEqual(json.loads(row["factor_data_json"])["release_date"], "2026-04-10")
+            self.assertEqual(row["signal_json"]["meta"]["source"], "unit-test")
+            self.assertEqual(row["factor_data_json"]["release_date"], "2026-04-10")
             # Legacy column remains populated for old query/report consumers.
-            self.assertEqual(json.loads(row["factor_data"])["factor_value"], 1.23)
+            self.assertEqual(row["factor_data"]["factor_value"], 1.23)
 
     def test_existing_database_is_migrated(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -91,6 +91,61 @@ class SignalLoggerContextTest(unittest.TestCase):
             self.assertIn("holding_days", columns)
             self.assertIn("stop_loss", columns)
             self.assertIn("as_of", columns)
+
+    def test_query_filters_and_decodes_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signals.db"
+            logger = SignalLogger(str(db_path))
+            logger.log(
+                "unit_factor",
+                {
+                    "direction": "BUY",
+                    "strength": 0.8,
+                    "confidence": 0.7,
+                    "reason": "matched",
+                    "asset": "A",
+                    "trigger": "t1",
+                    "holding_days": 5,
+                    "stop_loss": -0.02,
+                },
+                strength=0.8,
+                factor_data={"factor_value": 1.0},
+                as_of="2026-04-15",
+                run_id="unit_factor:2026-04-15",
+            )
+            logger.log(
+                "unit_factor",
+                {
+                    "direction": "SELL",
+                    "strength": -0.5,
+                    "confidence": 0.6,
+                    "reason": "other",
+                    "asset": "A",
+                    "trigger": "t2",
+                },
+                strength=-0.5,
+                factor_data={"factor_value": 2.0},
+                as_of="2026-04-16",
+                run_id="unit_factor:2026-04-16",
+            )
+
+            rows = logger.query(
+                factor_name="unit_factor",
+                days=None,
+                as_of="2026-04-15",
+                trigger="t1",
+                direction="BUY",
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["run_id"], "unit_factor:2026-04-15")
+            self.assertEqual(rows[0]["signal_json"]["trigger"], "t1")
+            self.assertEqual(rows[0]["factor_data_json"]["factor_value"], 1.0)
+
+            stats = logger.stats(factor_name="unit_factor", days=None, trigger="t1")
+            self.assertEqual(stats["total_signals"], 1)
+            self.assertEqual(stats["buy_signals"], 1)
+            self.assertEqual(stats["sell_signals"], 0)
+            self.assertEqual(stats["by_trigger"][0]["trigger"], "t1")
 
 
 if __name__ == "__main__":

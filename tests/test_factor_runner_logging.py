@@ -26,7 +26,7 @@ class DummyICMonitor:
 
 def _write_price(data_dir: str):
     dates = pd.date_range("2024-01-01", periods=80, freq="D")
-    df = pd.DataFrame({"date": dates, "close": [100 + i * 0.1 for i in range(len(dates))]})
+    df = pd.DataFrame({"date": dates, "close": [100.0 for _ in range(len(dates))]})
     Path(data_dir).mkdir(parents=True, exist_ok=True)
     df.to_parquet(Path(data_dir) / "pork_futures.parquet", index=False)
 

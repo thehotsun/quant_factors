@@ -54,6 +54,16 @@ class ApiSmokeTest(unittest.TestCase):
                 self.assertIsInstance(data["active_signals"], list)
                 self.assertIsInstance(data["all_results"], dict)
 
+    def test_signal_history_accepts_context_filters(self):
+        resp = self.client.get("/signals/history?factor=momentum&days=7&limit=5&as_of=2026-04-15&run_id=momentum:2026-04-15&trigger=x&direction=BUY")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertIn("query", payload)
+        self.assertEqual(payload["query"]["as_of"], "2026-04-15")
+        self.assertEqual(payload["query"]["run_id"], "momentum:2026-04-15")
+        self.assertEqual(payload["query"]["trigger"], "x")
+        self.assertEqual(payload["query"]["direction"], "BUY")
+
 
 if __name__ == "__main__":
     unittest.main()

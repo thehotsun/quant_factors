@@ -166,8 +166,20 @@ class SignalLogger:
         seen = set(columns)
         return [col for col in preferred if col in seen]
 
+    def _decode_json_fields(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        result = dict(row)
+        for key in ("signal_json", "factor_data_json", "factor_data"):
+            value = result.get(key)
+            if isinstance(value, str) and value:
+                try:
+                    result[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    pass
+        return result
+
     def query(self, factor_name: str = None, days: int = 30,
-              limit: int = 100) -> List[Dict[str, Any]]:
+              limit: int = 100, as_of: str = None, run_id: str = None,
+              trigger: str = None, direction: str = None) -> List[Dict[str, Any]]:
         conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
         selected = ", ".join(self._select_columns(conn))
@@ -176,6 +188,18 @@ class SignalLogger:
         if factor_name:
             sql += " AND factor_name = ?"
             params.append(factor_name)
+        if as_of:
+            sql += " AND as_of = ?"
+            params.append(as_of)
+        if run_id:
+            sql += " AND run_id = ?"
+            params.append(run_id)
+        if trigger:
+            sql += " AND trigger = ?"
+            params.append(trigger)
+        if direction:
+            sql += " AND direction = ?"
+            params.append(direction)
         if days:
             sql += " AND created_at >= date('now', ? || ' days')"
             params.append(f"-{days}")
@@ -183,37 +207,61 @@ class SignalLogger:
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
         conn.close()
-        return [dict(r) for r in rows]
+        return [self._decode_json_fields(dict(r)) for r in rows]
 
-    def stats(self, factor_name: str = None, days: int = 90) -> Dict[str, Any]:
+    def stats(self, factor_name: str = None, days: int = 90,
+              as_of: str = None, run_id: str = None, trigger: str = None,
+              direction: str = None) -> Dict[str, Any]:
         conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         conn.row_factory = sqlite3.Row
-        where = ""
+        filters = []
         params = []
         if factor_name:
-            where = " AND factor_name = ?"
+            filters.append("factor_name = ?")
             params.append(factor_name)
-        params.append(f"-{days}")
+        if as_of:
+            filters.append("as_of = ?")
+            params.append(as_of)
+        if run_id:
+            filters.append("run_id = ?")
+            params.append(run_id)
+        if trigger:
+            filters.append("trigger = ?")
+            params.append(trigger)
+        if direction:
+            filters.append("direction = ?")
+            params.append(direction)
+        if days:
+            filters.append("created_at >= date('now', ? || ' days')")
+            params.append(f"-{days}")
+        where = " AND " + " AND ".join(filters) if filters else ""
 
         total = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM signals WHERE 1=1{where} AND created_at >= date('now', ? || ' days')",
+            f"SELECT COUNT(*) as cnt FROM signals WHERE 1=1{where}",
             params
         ).fetchone()["cnt"]
 
         buy = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM signals WHERE direction='BUY'{where} AND created_at >= date('now', ? || ' days')",
+            f"SELECT COUNT(*) as cnt FROM signals WHERE direction='BUY'{where}",
             params
         ).fetchone()["cnt"]
 
         sell = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM signals WHERE direction='SELL'{where} AND created_at >= date('now', ? || ' days')",
+            f"SELECT COUNT(*) as cnt FROM signals WHERE direction='SELL'{where}",
             params
         ).fetchone()["cnt"]
 
         by_factor = conn.execute(
             f"""SELECT factor_name, COUNT(*) as cnt, AVG(strength) as avg_strength
-                FROM signals WHERE 1=1{where} AND created_at >= date('now', ? || ' days')
+                FROM signals WHERE 1=1{where}
                 GROUP BY factor_name ORDER BY cnt DESC""",
+            params
+        ).fetchall()
+
+        by_trigger = conn.execute(
+            f"""SELECT trigger, COUNT(*) as cnt, AVG(strength) as avg_strength
+                FROM signals WHERE 1=1{where} AND trigger IS NOT NULL
+                GROUP BY trigger ORDER BY cnt DESC""",
             params
         ).fetchall()
 
@@ -223,5 +271,13 @@ class SignalLogger:
             "buy_signals": buy,
             "sell_signals": sell,
             "by_factor": [dict(r) for r in by_factor],
+            "by_trigger": [dict(r) for r in by_trigger],
             "period_days": days,
+            "filters": {
+                "factor": factor_name,
+                "as_of": as_of,
+                "run_id": run_id,
+                "trigger": trigger,
+                "direction": direction,
+            },
         }

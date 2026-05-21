@@ -182,11 +182,32 @@ def signal_history():
     factor_name = request.args.get('factor')
     days = int(request.args.get('days', 30))
     limit = int(request.args.get('limit', 100))
-    rows = _signal_logger.query(factor_name=factor_name, days=days, limit=limit)
+    as_of = request.args.get('as_of')
+    run_id = request.args.get('run_id')
+    trigger = request.args.get('trigger')
+    direction = request.args.get('direction')
+    rows = _signal_logger.query(
+        factor_name=factor_name,
+        days=days,
+        limit=limit,
+        as_of=as_of,
+        run_id=run_id,
+        trigger=trigger,
+        direction=direction,
+    )
+    query = {
+        "factor": factor_name,
+        "days": days,
+        "limit": limit,
+        "as_of": as_of,
+        "run_id": run_id,
+        "trigger": trigger,
+        "direction": direction,
+    }
     return jsonify({
         "signals": rows,
         "count": len(rows),
-        "query": {"factor": factor_name, "days": days, "limit": limit}
+        "query": query,
     })
 
 
@@ -194,7 +215,18 @@ def signal_history():
 def signal_stats():
     factor_name = request.args.get('factor')
     days = int(request.args.get('days', 90))
-    stats = _signal_logger.stats(factor_name=factor_name, days=days)
+    as_of = request.args.get('as_of')
+    run_id = request.args.get('run_id')
+    trigger = request.args.get('trigger')
+    direction = request.args.get('direction')
+    stats = _signal_logger.stats(
+        factor_name=factor_name,
+        days=days,
+        as_of=as_of,
+        run_id=run_id,
+        trigger=trigger,
+        direction=direction,
+    )
     return jsonify(stats)
 
 
