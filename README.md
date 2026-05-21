@@ -39,8 +39,10 @@ quant_factors/
 ├── core/                    # 核心基础设施
 │   ├── config.py            #   环境变量配置与 Tushare client 懒加载
 │   ├── data_bus.py          #   数据缓存/读取
+│   ├── data_refresh.py      #   定时数据刷新任务（国内/外盘）
 │   ├── factor_runner.py     #   因子导入、实例化、执行、日志与 IC 快照
 │   ├── macro_calendar.py    #   宏观数据发布日期/as-of 过滤
+│   ├── scheduler.py         #   APScheduler 启动与 gunicorn 多 worker 文件锁
 │   ├── push.py              #   推送渠道与信号日报格式化
 │   └── signal_*.py          #   信号聚合、落库
 ├── server.py                # Flask API 服务（路由 + 内置定时任务）
@@ -876,7 +878,7 @@ curl http://localhost:5001/ic/health
 
 ### 7. 定时任务（内置，无需 crontab）
 
-服务启动时自动注册定时任务（在 `server.py` 中），**不需要额外配置 crontab**。Gunicorn 多 worker 部署时通过文件锁保证只有一个 worker 启动调度器：
+服务启动时自动注册定时任务（调度器启动在 `core/scheduler.py`，具体数据刷新任务在 `core/data_refresh.py`），**不需要额外配置 crontab**。Gunicorn 多 worker 部署时通过文件锁保证只有一个 worker 启动调度器：
 
 | 时间 | 任务 | 说明 |
 |------|------|------|

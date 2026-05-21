@@ -37,3 +37,31 @@ Always verify secret purpose before writing environment drop-ins; prefer redacte
 - Related Files: ~/.config/systemd/user/quant-factors.service.d/10-env.conf
 
 ---
+
+## [ERR-20260521-003] repeated subagent streamTo incompatibility
+
+**Logged**: 2026-05-21T20:06:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tooling
+
+### Summary
+Repeated the known mistake of passing `streamTo` to `sessions_spawn` with `runtime="subagent"`.
+
+### Error
+```
+streamTo is only supported for runtime=acp; got runtime=subagent
+```
+
+### Context
+Attempted to spawn a read-only financial audit subagent for `quant_factors`.
+
+### Suggested Fix
+For subagent runtime, omit `streamTo`; only use `streamTo` with `runtime="acp"`.
+
+### Metadata
+- Reproducible: yes
+- Related Files: .learnings/ERRORS.md
+- See Also: ERR-20260521-001
+
+---

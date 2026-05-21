@@ -1,36 +1,13 @@
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify
 
-import pandas as pd
 from datetime import datetime
 from pathlib import Path
 import yaml
-import os
 import logging
-import akshare as ak
-from core.config import MissingConfigError, get_tushare_pro
 from core.factor_runner import FactorRunner
-
-try:
-    tushare_pro = get_tushare_pro()
-except MissingConfigError as e:
-    tushare_pro = None
-    logging.getLogger(__name__).warning(str(e))
-
-
-def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
-    """从 FRED 直接下载 CSV 数据"""
-    try:
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
-        df = pd.read_csv(url)
-        df = df.rename(columns={'observation_date': 'date'})
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date')
-        return df
-    except Exception as e:
-        logger.warning(f"{name} FRED下载失败: {e}")
-        return None
+from core.data_refresh import daily_data_refresh, daily_data_refresh_foreign
+from core.scheduler import init_scheduler
 
 from core.factor_registry import FactorRegistry
 from core.signal_aggregator import SignalAggregator
@@ -332,104 +309,13 @@ def ic_health_report():
     })
 
 
-def _retry_fetch(name, fetcher, max_retries=3, base_delay=2):
-    for attempt in range(max_retries):
-        try:
-            return fetcher()
-        except Exception as e:
-            if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)
-                logger.warning(f"  {name} 第{attempt+1}次失败: {e}，{delay}s后重试...")
-                time.sleep(delay)
-            else:
-                raise
-
 
 def _daily_data_refresh():
-    """定时任务：每日数据刷新（国内品种，18:00执行）"""
-    logger.info("开始每日数据刷新（国内品种）...")
-    try:
-        from download_history import save_parquet, fetch_tushare_futures, fetch_pboc_social_financing, fetch_eia_crude_stock
-
-        tasks = [
-            ("生猪期货", lambda: fetch_tushare_futures("LH.DCE", "生猪期货"), "pork_futures"),
-            ("鸡蛋期货", lambda: fetch_tushare_futures("JD.DCE", "鸡蛋期货"), "egg_futures"),
-            ("豆粕期货", lambda: fetch_tushare_futures("M.DCE", "豆粕期货"), "soybean_meal_futures"),
-            ("玉米期货", lambda: fetch_tushare_futures("C.DCE", "玉米期货"), "corn_futures"),
-            ("国产大豆", lambda: fetch_tushare_futures("A.DCE", "国产大豆"), "soybean_domestic_futures"),
-            ("进口大豆", lambda: fetch_tushare_futures("B.DCE", "进口大豆"), "soybean_import_futures"),
-            ("菜粕期货", lambda: fetch_tushare_futures("RM.ZCE", "菜粕期货"), "rapeseed_meal_futures"),
-            ("豆油期货", lambda: fetch_tushare_futures("Y.DCE", "豆油期货"), "soybean_oil_futures"),
-            ("原油期货", lambda: fetch_tushare_futures("SC.INE", "原油期货"), "crude_oil_futures"),
-            ("铜期货", lambda: fetch_tushare_futures("CU.SHF", "铜期货"), "copper_futures"),
-            ("铝期货", lambda: fetch_tushare_futures("AL.SHF", "铝期货"), "aluminum_futures"),
-            ("螺纹钢", lambda: fetch_tushare_futures("RB.SHF", "螺纹钢"), "rebar_futures"),
-            ("黄金期货", lambda: fetch_tushare_futures("AU.SHF", "黄金期货"), "gold_futures"),
-            ("白银期货", lambda: fetch_tushare_futures("AG.SHF", "白银期货"), "silver_futures"),
-            ("动力煤期货", lambda: fetch_tushare_futures("ZC.ZCE", "动力煤期货"), "thermal_coal_futures"),
-            ("铁矿石期货", lambda: fetch_tushare_futures("I.DCE", "铁矿石期货"), "iron_ore_futures"),
-            ("美元人民币", lambda: fetch_fred_csv("DEXCHUS", "USD/CNY汇率"), "usd_cny"),
-            ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
-            ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
-            ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
-            ("社融规模", lambda: fetch_pboc_social_financing() or ak.macro_china_shrzgm(), "social_financing"),
-        ]
-
-        failed = 0
-        for name, fetcher, filename in tasks:
-            try:
-                df = _retry_fetch(name, fetcher)
-                save_parquet(df, filename)
-                logger.info(f"  {name} 刷新成功")
-            except Exception as e:
-                failed += 1
-                logger.warning(f"  {name} 刷新失败（已重试3次）: {e}")
-
-        if failed == len(tasks):
-            logger.error("所有国内数据源刷新失败！请检查网络连接")
-        elif failed > 0:
-            logger.warning(f"国内数据刷新部分失败: {failed}/{len(tasks)}")
-
-        _data_bus.invalidate()
-        logger.info("每日数据刷新（国内品种）完成")
-    except Exception as e:
-        logger.error(f"每日数据刷新异常: {e}")
+    return daily_data_refresh(_data_bus)
 
 
 def _daily_data_refresh_foreign():
-    """定时任务：外盘数据刷新（次日06:00执行，确保外盘已收盘）"""
-    logger.info("开始外盘数据刷新...")
-    try:
-        from download_history import save_parquet, fetch_eia_crude_stock, fetch_brent_oil
-
-        tasks = [
-            ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
-            ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
-            ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
-            ("布伦特原油", lambda: fetch_brent_oil() or ak.energy_oil_hist(), "brent_oil"),
-            ("EIA原油库存", lambda: fetch_eia_crude_stock() or ak.macro_usa_eia_crude_rate(), "eia_crude_stock"),
-            ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
-        ]
-
-        failed = 0
-        for name, fetcher, filename in tasks:
-            try:
-                df = _retry_fetch(name, fetcher)
-                save_parquet(df, filename)
-                logger.info(f"  {name} 刷新成功")
-            except Exception as e:
-                failed += 1
-                logger.warning(f"  {name} 刷新失败（已重试3次）: {e}")
-
-        if failed == len(tasks):
-            logger.error("所有外盘数据源刷新失败！请检查网络连接")
-        elif failed > 0:
-            logger.warning(f"外盘数据刷新部分失败: {failed}/{len(tasks)}")
-
-        _data_bus.invalidate()
-        logger.info("外盘数据刷新完成")
-    except Exception as e:
-        logger.error(f"外盘数据刷新异常: {e}")
+    return daily_data_refresh_foreign(_data_bus)
 
 
 def _daily_ic_compute():
@@ -494,42 +380,14 @@ def _daily_push():
         logger.info(f"每日推送完成: {success_count}/{len(composite_chains)} 个链条推送成功")
 
 
-_scheduler_lock_fd = None
-
 
 def _init_scheduler():
-    # 文件锁：gunicorn 多 worker 时只让一个 worker 跑调度
-    import fcntl
-    global _scheduler_lock_fd
-    lock_path = Path('/tmp/quant_factors_scheduler.lock')
-    lock_fd = open(lock_path, 'w')
-    try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        logger.info('另一个 worker 已持有调度器锁，跳过初始化')
-        lock_fd.close()
-        return
-    _scheduler_lock_fd = lock_fd
-
-    try:
-        from apscheduler.schedulers.background import BackgroundScheduler
-    except ImportError:
-        logger.error('APScheduler 未安装，定时任务不可用。请执行: pip install apscheduler')
-        raise SystemExit(1)
-
-    scheduler = BackgroundScheduler(
-        job_defaults={
-            'misfire_grace_time': 7200,
-            'coalesce': True,
-            'max_instances': 1,
-        }
+    return init_scheduler(
+        _daily_data_refresh,
+        _daily_data_refresh_foreign,
+        _daily_ic_compute,
+        _daily_push,
     )
-    scheduler.add_job(_daily_data_refresh, 'cron', hour=18, minute=0, id='daily_refresh')
-    scheduler.add_job(_daily_data_refresh_foreign, 'cron', hour=6, minute=0, id='daily_refresh_foreign')
-    scheduler.add_job(_daily_ic_compute, 'cron', hour=18, minute=30, id='daily_ic')
-    scheduler.add_job(_daily_push, 'cron', hour=18, minute=35, id='daily_push')
-    scheduler.start()
-    logger.info('APScheduler 已启动 (worker PID %d): 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送', os.getpid())
 
 
 @app.route('/push/<chain_name>', methods=['GET'])
