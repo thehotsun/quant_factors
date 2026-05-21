@@ -20,6 +20,10 @@ from core.settings import load_chains_config  # noqa: E402
 
 
 REQUIRED_SIGNAL_KEYS = {"asset", "direction", "strength", "signal_strength", "reason", "confidence", "trigger", "meta"}
+KNOWN_MISSING_DATA_DEPS = {
+    "pig_chicken_spread": {"chicken_spot"},
+    "term_structure": {"pork_futures_far"},
+}
 
 
 def load_chains() -> Dict[str, Dict[str, Any]]:
@@ -61,6 +65,8 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
             "errors": 0,
             "warnings": 0,
             "metadata_diffs": 0,
+            "known_missing_deps": 0,
+            "unexpected_missing_deps": 0,
         },
         "modules": [],
         "chains": [],
@@ -96,10 +102,19 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
 
         module_name = cfg.get("factor_module")
         class_name = cfg.get("factor_class")
-        missing_deps = []
+        known_missing_deps = []
+        unexpected_missing_deps = []
         for dep in cfg.get("data_deps", []):
             if not (ROOT / "data" / f"{dep}.parquet").exists():
-                missing_deps.append(dep)
+                if dep in KNOWN_MISSING_DATA_DEPS.get(name, set()):
+                    known_missing_deps.append(dep)
+                else:
+                    unexpected_missing_deps.append(dep)
+        missing_deps = known_missing_deps + unexpected_missing_deps
+        if known_missing_deps:
+            item["known_missing_deps"] = known_missing_deps
+        if unexpected_missing_deps:
+            item["unexpected_missing_deps"] = unexpected_missing_deps
 
         if not module_name or not class_name:
             item["ok"] = False
@@ -136,8 +151,12 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
                     item["ok"] = False
                     item["errors"].append(f"calculate/signal failed: {type(exc).__name__}: {exc}")
 
-        if missing_deps:
-            item["warnings"].append(f"missing data_deps files: {missing_deps}")
+        if known_missing_deps:
+            item["warnings"].append(f"known missing data_deps files: {known_missing_deps}")
+            report["summary"]["known_missing_deps"] += len(known_missing_deps)
+        if unexpected_missing_deps:
+            item["warnings"].append(f"unexpected missing data_deps files: {unexpected_missing_deps}")
+            report["summary"]["unexpected_missing_deps"] += len(unexpected_missing_deps)
 
         if item["errors"]:
             report["summary"]["errors"] += len(item["errors"])
@@ -162,7 +181,9 @@ def main() -> int:
         print(
             f"chains={summary['chains']} factor_modules={summary['factor_modules']} "
             f"errors={summary['errors']} warnings={summary['warnings']} "
-            f"metadata_diffs={summary.get('metadata_diffs', 0)}"
+            f"metadata_diffs={summary.get('metadata_diffs', 0)} "
+            f"known_missing_deps={summary.get('known_missing_deps', 0)} "
+            f"unexpected_missing_deps={summary.get('unexpected_missing_deps', 0)}"
         )
         for item in report["chains"]:
             if item.get("errors") or item.get("warnings") or item.get("metadata_diffs"):

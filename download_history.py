@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from pathlib import Path
 import os
+import tempfile
 import time
 from core.config import get_tushare_pro
 
@@ -14,10 +15,8 @@ def _pro():
     return get_tushare_pro()
 
 
-def save_parquet(df, name):
-    if df is None or df.empty:
-        print(f"  {name} 无数据")
-        return
+def _normalize_history_frame(df):
+    df = df.copy()
     if '日期' in df.columns:
         df.rename(columns={'日期': 'date'}, inplace=True)
     if '月份' in df.columns:
@@ -34,12 +33,44 @@ def save_parquet(df, name):
             # YYYYMM格式: "201501"
             df['date'] = date_str + '01'  # 补充日期为01
         df['date'] = pd.to_datetime(df['date'], format='mixed')
-        df = df.sort_values('date')
+        df = df.dropna(subset=['date']).sort_values('date')
+    return df
+
+
+def _atomic_write_parquet(df, file_path: Path):
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{file_path.name}.",
+            suffix=".tmp",
+            dir=file_path.parent,
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+        df.to_parquet(tmp_path, index=False)
+        # Read back before replacing so a broken write cannot clobber existing data.
+        check = pd.read_parquet(tmp_path)
+        if check.empty:
+            raise ValueError("written parquet readback is empty")
+        os.replace(tmp_path, file_path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
+def save_parquet(df, name):
+    if df is None or df.empty:
+        print(f"  {name} 无数据，保留已有文件")
+        return False
+    df = _normalize_history_frame(df)
+    if df.empty:
+        print(f"  {name} 规范化后无数据，保留已有文件")
+        return False
     file_path = DATA_DIR / f"{name}.parquet"
-    tmp_path = DATA_DIR / f"{name}.parquet.tmp"
-    df.to_parquet(tmp_path, index=False)
-    os.replace(tmp_path, file_path)
+    _atomic_write_parquet(df, file_path)
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")
+    return True
 
 
 def fetch_brent_oil():
