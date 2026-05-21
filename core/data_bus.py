@@ -1,8 +1,10 @@
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 import logging
 import threading
 import pandas as pd
+
+from core.price_schema import is_price_like
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +54,37 @@ class DataBus:
             if date_col in df.columns:
                 df[date_col] = pd.to_datetime(df[date_col])
                 df = df.sort_values(date_col)
+            adjusted = False
             if 'close' in df.columns and name in self._CHINESE_FUTURES:
                 df = self._adjust_roll_gap(df)
+                adjusted = True
+            df = self._attach_metadata(df, name=name, path=path, adjusted=adjusted)
             self._cache[name] = df
             return df
+
+    @staticmethod
+    def _attach_metadata(df: pd.DataFrame, name: str, path: Path, adjusted: bool = False) -> pd.DataFrame:
+        """Attach observational metadata without changing factor-facing columns."""
+        result = df.copy()
+        is_price = is_price_like(name) and 'date' in result.columns and 'close' in result.columns
+        explicit_columns = sorted({'close_raw', 'close_adj', 'return_raw', 'return_adj'} & set(result.columns))
+        metadata: Dict[str, Any] = {
+            "dataset": name,
+            "source_file": str(path),
+            "rows": int(len(result)),
+            "columns": list(result.columns),
+            "is_price_data": bool(is_price),
+        }
+        if is_price:
+            metadata.update({
+                "price_mode": "explicit_price_columns" if explicit_columns else "legacy_close",
+                "explicit_price_columns": explicit_columns,
+                "adjustment": "roll_gap_adjusted" if adjusted else "raw",
+            })
+        if result.attrs.get("roll_gap_adjustment"):
+            metadata["roll_gap_adjustment"] = result.attrs["roll_gap_adjustment"]
+        result.attrs["data_bus"] = metadata
+        return result
 
     @staticmethod
     def _adjust_roll_gap(df: pd.DataFrame) -> pd.DataFrame:
@@ -88,7 +117,19 @@ class DataBus:
         df = df.copy()
         df['close_raw'] = close
         df['close'] = adjusted
+        df.attrs["roll_gap_adjustment"] = {
+            "method": "pct_change_threshold",
+            "roll_count": int(roll_count),
+            "cumulative_adjustment": float(cumulative_adj),
+        }
         return df
+
+    def get_metadata(self, name: str) -> Optional[Dict[str, Any]]:
+        df = self.get(name)
+        if df is None:
+            return None
+        metadata = df.attrs.get("data_bus")
+        return dict(metadata) if metadata else None
 
     def invalidate(self, name: str = None):
         if name:
