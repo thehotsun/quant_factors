@@ -65,3 +65,13 @@ For subagent runtime, omit `streamTo`; only use `streamTo` with `runtime="acp"`.
 - See Also: ERR-20260521-001
 
 ---
+
+## [ERR-20260521-002] shell quoting failure in grep pattern
+
+**Logged**: 2026-05-21T20:06:00+08:00
+**Command Type**: local shell / grep
+**Severity**: low
+
+**What happened**: A sensitive-string grep command failed with `unexpected EOF while looking for matching '"'` because the regex mixed single quotes inside a single-quoted shell string.
+
+**Resolution**: For complex regex containing both single and double quotes, use `python`/ripgrep with a here-doc or simplify quoting instead of embedding nested quote patterns directly in one shell string.
