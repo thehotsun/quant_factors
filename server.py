@@ -165,7 +165,8 @@ def signal_only(chain_name):
                 strength = factor.signal_strength()
             except Exception:
                 pass
-        _signal_logger.log(chain_name, signal, strength, None)
+        today = datetime.now().strftime("%Y-%m-%d")
+        _signal_logger.log(chain_name, signal, strength, None, as_of=today, run_id=f"{chain_name}:{today}")
         return jsonify({
             "chain": chain_name,
             "signal": signal,

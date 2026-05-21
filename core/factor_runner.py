@@ -7,6 +7,7 @@ here instead of in server.py.
 from __future__ import annotations
 
 import importlib
+from datetime import datetime
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -148,7 +149,8 @@ class FactorRunner:
             except Exception as e:
                 logger.warning("因子 %s signal_strength 计算失败: %s", chain_name, e)
 
-        self.signal_logger.log(chain_name, signal, strength, data)
+        today = datetime.now().strftime("%Y-%m-%d")
+        self.signal_logger.log(chain_name, signal, strength, data, as_of=today, run_id=f"{chain_name}:{today}")
 
         if data is not None:
             try:

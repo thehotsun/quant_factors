@@ -126,3 +126,25 @@ Use one canonical absolute `DATA_DIR` path everywhere in the server runtime and 
 - Tags: databus, tests, singleton, path-consistency
 
 ---
+
+## [ERR-20260521-002] edit_exact_text_mismatched_file
+
+**Logged**: 2026-05-21T22:08:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+A multi-edit attempted to patch `core/factor_runner.py` using an exact block from `server.py`, so the edit failed before any replacement was applied.
+
+### Context
+When editing multiple files or nearby concepts, read the target file immediately before patching and keep each edit scoped to the correct file.
+
+### Suggested Fix
+Use separate edit calls per file when touching similar call sites such as `SignalLogger.log(...)` in `core/factor_runner.py` and `server.py`.
+
+### Metadata
+- Reproducible: yes
+- Related Files: core/factor_runner.py, server.py
+
+---
