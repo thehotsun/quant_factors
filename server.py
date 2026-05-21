@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify
 
 from datetime import datetime
-from pathlib import Path
-import yaml
 import logging
 from core.factor_runner import FactorRunner
 from core.data_refresh import daily_data_refresh, daily_data_refresh_foreign
@@ -15,33 +13,23 @@ from core.factor_registry import FactorRegistry
 from core.data_bus import DataBus
 from core.signal_logger import SignalLogger
 from core.push import init_push_channels
+from core.settings import DATA_DIR, SIGNALS_DB_PATH, IC_DB_PATH, load_chains_config, load_factor_params
 from evaluation.ic_monitor import ICMonitor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-DATA_DIR = Path(__file__).parent / "data"
 
 try:
-    with open(Path(__file__).parent / "config" / "chains.yaml", "r", encoding="utf-8") as f:
-        CHAINS_CONFIG = yaml.safe_load(f)["chains"]
+    CHAINS_CONFIG = load_chains_config()
 except Exception as e:
-    logger.error(f"加载 chains.yaml 失败: {e}")
     raise SystemExit(f"无法加载 chains.yaml: {e}")
 
 _data_bus = DataBus(str(DATA_DIR))
-_signal_logger = SignalLogger(str(DATA_DIR / "signals.db"))
-_ic_monitor = ICMonitor(str(DATA_DIR / "ic_monitor.db"))
-_FACTOR_PARAMS = {}
-try:
-    _params_path = Path(__file__).parent / "config" / "factor_params.yaml"
-    if _params_path.exists():
-        with open(_params_path, "r", encoding="utf-8") as f:
-            _params_config = yaml.safe_load(f)
-            _FACTOR_PARAMS = _params_config.get("factors", {})
-except Exception as e:
-    logger.warning(f"加载 factor_params.yaml 失败: {e}")
+_signal_logger = SignalLogger(str(SIGNALS_DB_PATH))
+_ic_monitor = ICMonitor(str(IC_DB_PATH))
+_FACTOR_PARAMS = load_factor_params()
 
 
 _runner = FactorRunner(CHAINS_CONFIG, _FACTOR_PARAMS, DATA_DIR, _signal_logger, _ic_monitor)

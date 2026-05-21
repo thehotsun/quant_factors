@@ -7,9 +7,7 @@ import importlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
-
-import yaml
+from typing import Any, Dict
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -17,14 +15,40 @@ if str(ROOT) not in sys.path:
 
 from core.factor_runner import collect_factor_modules, normalize_factor_data  # noqa: E402
 from core.data_bus import DataBus  # noqa: E402
+from core.factor_registry import FactorRegistry  # noqa: E402
+from core.settings import load_chains_config  # noqa: E402
 
 
 REQUIRED_SIGNAL_KEYS = {"asset", "direction", "strength", "signal_strength", "reason", "confidence", "trigger", "meta"}
 
 
 def load_chains() -> Dict[str, Dict[str, Any]]:
-    with open(ROOT / "config" / "chains.yaml", "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)["chains"]
+    return load_chains_config()
+
+
+def _compare_registry_metadata(chain_name: str, cfg: Dict[str, Any], item: Dict[str, Any]) -> int:
+    """Record non-fatal metadata drift between registry and chains.yaml."""
+    registry_info = FactorRegistry.info(chain_name)
+    if not registry_info:
+        return 0
+
+    diffs = []
+    for field in ("category", "description", "asset", "data_deps"):
+        yaml_value = cfg.get(field, [] if field == "data_deps" else "")
+        registry_value = registry_info.get(field, [] if field == "data_deps" else "")
+        if field == "data_deps":
+            yaml_value = list(yaml_value or [])
+            registry_value = list(registry_value or [])
+        if yaml_value != registry_value:
+            diffs.append({
+                "field": field,
+                "chains_yaml": yaml_value,
+                "registry": registry_value,
+            })
+
+    if diffs:
+        item.setdefault("metadata_diffs", []).extend(diffs)
+    return len(diffs)
 
 
 def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
@@ -36,6 +60,7 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
             "factor_modules": len(modules),
             "errors": 0,
             "warnings": 0,
+            "metadata_diffs": 0,
         },
         "modules": [],
         "chains": [],
@@ -88,6 +113,7 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
                     if key in cfg:
                         kwargs[key] = cfg[key]
                 factor = cls(**kwargs)
+                report["summary"]["metadata_diffs"] += _compare_registry_metadata(name, cfg, item)
             except Exception as exc:
                 item["ok"] = False
                 item["errors"].append(f"instantiate failed: {type(exc).__name__}: {exc}")
@@ -133,14 +159,20 @@ def main() -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         summary = report["summary"]
-        print(f"chains={summary['chains']} factor_modules={summary['factor_modules']} errors={summary['errors']} warnings={summary['warnings']}")
+        print(
+            f"chains={summary['chains']} factor_modules={summary['factor_modules']} "
+            f"errors={summary['errors']} warnings={summary['warnings']} "
+            f"metadata_diffs={summary.get('metadata_diffs', 0)}"
+        )
         for item in report["chains"]:
-            if item.get("errors") or item.get("warnings"):
+            if item.get("errors") or item.get("warnings") or item.get("metadata_diffs"):
                 print(f"- {item['chain']} [{item.get('category')}]")
                 for msg in item.get("errors", []):
                     print(f"  ERROR: {msg}")
                 for msg in item.get("warnings", []):
                     print(f"  WARN: {msg}")
+                for diff in item.get("metadata_diffs", []):
+                    print(f"  META: {diff['field']} differs between chains.yaml and registry")
     return 1 if report["summary"]["errors"] else 0
 
 
