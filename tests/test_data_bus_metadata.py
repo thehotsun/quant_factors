@@ -26,13 +26,13 @@ class DataBusMetadataTest(unittest.TestCase):
 
             bus = DataBus(tmp)
             result = bus.get("brent_oil")
-            self.assertEqual(list(result.columns), ["date", "close"])
+            self.assertEqual(list(result.columns), ["date", "close", "close_raw", "close_adj", "return_raw", "return_adj"])
             self.assertEqual(result["date"].dt.strftime("%Y-%m-%d").tolist(), ["2024-01-01", "2024-01-02"])
 
             meta = bus.get_metadata("brent_oil")
             self.assertEqual(meta["dataset"], "brent_oil")
             self.assertTrue(meta["is_price_data"])
-            self.assertEqual(meta["price_mode"], "legacy_close")
+            self.assertEqual(meta["price_mode"], "explicit_price_columns")
             self.assertEqual(meta["adjustment"], "raw")
             self.assertEqual(meta["rows"], 2)
             self.assertTrue(meta["source_file"].endswith("brent_oil.parquet"))

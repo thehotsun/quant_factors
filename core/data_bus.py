@@ -10,7 +10,26 @@ logger = logging.getLogger(__name__)
 
 
 class DataBus:
-    """单例数据中心：统一加载+缓存，所有因子共享，避免重复 I/O"""
+    """单例数据中心：统一加载+缓存，所有因子共享，避免重复 I/O
+
+    Price column semantics for futures data (after roll-gap adjustment):
+
+    - ``close_raw``: Original unadjusted close from the data source.
+    - ``close_adj``: Close after roll-gap adjustment (shifts subsequent prices
+      to remove discontinuities at contract roll dates).
+    - ``close``: Backward-compatible alias for ``close_adj``.
+    - ``return_raw``: Daily return computed from ``close_raw``.
+    - ``return_adj``: Daily return computed from ``close_adj``.
+
+    For non-futures price data (macro, FRED, etc.) where no roll-gap adjustment
+    is applied, ``close_raw == close_adj == close`` and
+    ``return_raw == return_adj``.
+
+    Recommendation:
+    - Use ``return_raw`` for P&L / backtest returns (tradeable reality).
+    - Use ``close_adj`` / ``return_adj`` for valuation / z-score positioning
+      (removes roll noise).
+    """
     _instance: Optional["DataBus"] = None
 
     _CHINESE_FUTURES = {
@@ -58,6 +77,17 @@ class DataBus:
             if 'close' in df.columns and name in self._CHINESE_FUTURES:
                 df = self._adjust_roll_gap(df)
                 adjusted = True
+            elif 'close' in df.columns and is_price_like(name):
+                # Non-futures price data: explicit columns without adjustment
+                df = df.copy()
+                if 'close_raw' not in df.columns:
+                    df['close_raw'] = df['close']
+                if 'close_adj' not in df.columns:
+                    df['close_adj'] = df['close']
+                if 'return_raw' not in df.columns:
+                    df['return_raw'] = df['close'].pct_change()
+                if 'return_adj' not in df.columns:
+                    df['return_adj'] = df['close'].pct_change()
             df = self._attach_metadata(df, name=name, path=path, adjusted=adjusted)
             self._cache[name] = df
             return df
@@ -116,7 +146,10 @@ class DataBus:
 
         df = df.copy()
         df['close_raw'] = close
-        df['close'] = adjusted
+        df['close_adj'] = adjusted
+        df['close'] = adjusted  # backward-compatible default
+        df['return_raw'] = close.pct_change()
+        df['return_adj'] = adjusted.pct_change()
         df.attrs["roll_gap_adjustment"] = {
             "method": "pct_change_threshold",
             "roll_count": int(roll_count),

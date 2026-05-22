@@ -24,6 +24,13 @@ KNOWN_MISSING_PRICE_DATA = {"chicken_spot"}
 REQUIRED_PRICE_COLUMNS = {"date", "close"}
 EXPLICIT_PRICE_COLUMNS = {"close_raw", "close_adj", "return_raw", "return_adj"}
 
+# Price column semantics:
+#   close_raw  — Original unadjusted close from the data source.
+#   close_adj  — Close after roll-gap adjustment (futures only; = close_raw for non-futures).
+#   return_raw — Daily return from close_raw (use for P&L / backtest).
+#   return_adj — Daily return from close_adj (use for z-score / valuation positioning).
+#   close      — Backward-compatible alias; equals close_adj after DataBus processing.
+
 
 def is_price_like(dep_name: str) -> bool:
     return dep_name in PRICE_DATA_NAMES
