@@ -77,12 +77,13 @@ def normalize_factor_data(data: Any, factor_name: str = "unknown") -> Any:
 
 class FactorRunner:
     def __init__(self, chains_config: Dict[str, Dict[str, Any]], factor_params: Dict[str, Any],
-                 data_dir, signal_logger, ic_monitor):
+                 data_dir, signal_logger, ic_monitor, chain_defs: Dict[str, Any] = None):
         self.chains_config = chains_config
         self.factor_params = factor_params or {}
         self.data_dir = data_dir
         self.signal_logger = signal_logger
         self.ic_monitor = ic_monitor
+        self.chain_defs = chain_defs or {}
         self._imported = False
 
     def ensure_imported(self):
@@ -95,12 +96,24 @@ class FactorRunner:
         self._imported = True
 
     def instantiate(self, chain_name: str):
+        # Prefer ChainDefinition for metadata; fall back to raw config
+        chain_def = self.chain_defs.get(chain_name)
         cfg = self.chains_config.get(chain_name)
-        if not cfg:
-            return None
-        module_path = cfg.get("factor_module")
-        class_name = cfg.get("factor_class")
-        if not module_path or not class_name:
+        if chain_def is not None:
+            if chain_def.is_composite or not chain_def.has_factor:
+                return None
+            module_path = chain_def.factor_module
+            class_name = chain_def.factor_class
+            symbol = chain_def.symbol
+            far_symbol = chain_def.far_symbol
+        elif cfg:
+            module_path = cfg.get("factor_module")
+            class_name = cfg.get("factor_class")
+            if not module_path or not class_name:
+                return None
+            symbol = cfg.get("symbol")
+            far_symbol = cfg.get("far_symbol")
+        else:
             return None
         try:
             mod = importlib.import_module(module_path)
@@ -111,9 +124,10 @@ class FactorRunner:
                 "adaptive": factor_cfg.get("adaptive", True),
                 "params": factor_cfg.get("params", {}),
             }
-            for key in ("symbol", "far_symbol"):
-                if key in cfg:
-                    kwargs[key] = cfg[key]
+            if symbol:
+                kwargs["symbol"] = symbol
+            if far_symbol:
+                kwargs["far_symbol"] = far_symbol
             return cls(**kwargs)
         except Exception as e:
             logger.warning("实例化因子 %s 失败: %s", chain_name, e)

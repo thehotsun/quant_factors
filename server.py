@@ -8,6 +8,7 @@ from core.scheduler import init_scheduler
 from core.composite_runner import run_composite_chain
 from core.ic_service import compute_daily_ic
 from core.push_service import send_chain_push, push_daily_composite_reports
+from core.chain_config import build_chain_definitions, check_metadata_consistency
 
 from core.factor_registry import FactorRegistry
 from core.data_bus import DataBus
@@ -27,13 +28,20 @@ try:
 except Exception as e:
     raise SystemExit(f"无法加载 chains.yaml: {e}")
 
+# Unified immutable chain definitions (merges chains.yaml + registry metadata)
+CHAIN_DEFS = build_chain_definitions(CHAINS_CONFIG, registry_info_fn=FactorRegistry.info)
+_metadata_diffs = check_metadata_consistency(CHAINS_CONFIG, FactorRegistry.info)
+if _metadata_diffs:
+    for _d in _metadata_diffs:
+        logger.warning("链条 %s 字段 %s 不一致: yaml=%r registry=%r", _d.chain, _d.field, _d.yaml_value, _d.registry_value)
+
 _data_bus = DataBus(str(DATA_DIR))
 _signal_logger = SignalLogger(str(SIGNALS_DB_PATH))
 _ic_monitor = ICMonitor(str(IC_DB_PATH))
 _FACTOR_PARAMS = load_factor_params()
 
 
-_runner = FactorRunner(CHAINS_CONFIG, _FACTOR_PARAMS, DATA_DIR, _signal_logger, _ic_monitor)
+_runner = FactorRunner(CHAINS_CONFIG, _FACTOR_PARAMS, DATA_DIR, _signal_logger, _ic_monitor, chain_defs=CHAIN_DEFS)
 
 
 def _instantiate_factor(chain_name):

@@ -18,6 +18,7 @@ from core.data_bus import DataBus  # noqa: E402
 from core.factor_registry import FactorRegistry  # noqa: E402
 from core.price_schema import collect_price_dependencies, inspect_price_dependencies  # noqa: E402
 from core.settings import load_chains_config  # noqa: E402
+from core.chain_config import build_chain_definitions, check_metadata_consistency  # noqa: E402
 
 
 REQUIRED_SIGNAL_KEYS = {"asset", "direction", "strength", "signal_strength", "reason", "confidence", "trigger", "meta"}
@@ -32,26 +33,12 @@ def load_chains() -> Dict[str, Dict[str, Any]]:
 
 def _compare_registry_metadata(chain_name: str, cfg: Dict[str, Any], item: Dict[str, Any]) -> int:
     """Record non-fatal metadata drift between registry and chains.yaml."""
-    registry_info = FactorRegistry.info(chain_name)
-    if not registry_info:
-        return 0
-
-    diffs = []
-    for field in ("category", "description", "asset", "data_deps"):
-        yaml_value = cfg.get(field, [] if field == "data_deps" else "")
-        registry_value = registry_info.get(field, [] if field == "data_deps" else "")
-        if field == "data_deps":
-            yaml_value = list(yaml_value or [])
-            registry_value = list(registry_value or [])
-        if yaml_value != registry_value:
-            diffs.append({
-                "field": field,
-                "chains_yaml": yaml_value,
-                "registry": registry_value,
-            })
-
+    diffs = check_metadata_consistency({chain_name: cfg}, FactorRegistry.info)
     if diffs:
-        item.setdefault("metadata_diffs", []).extend(diffs)
+        item.setdefault("metadata_diffs", []).extend([
+            {"field": d.field, "chains_yaml": d.yaml_value, "registry": d.registry_value}
+            for d in diffs
+        ])
     return len(diffs)
 
 
