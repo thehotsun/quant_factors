@@ -231,6 +231,110 @@ class BaseFactor(ABC):
             return "SELL"
         return "HOLD"
 
+    # ── Regime detection helpers ──────────────────────────────────────────
+
+    def _load_regime_data(self) -> Dict[str, Any]:
+        """Load regime indicator data for confidence adjustment.
+
+        Returns a dict with keys: vix, usd_cny, pmi, pmi_change.
+        Each value is a float or None.
+        """
+        regime: Dict[str, Any] = {}
+
+        vix_df = self.load("vix")
+        if vix_df is not None and "close" in vix_df.columns and len(vix_df) >= 1:
+            regime["vix"] = self._safe_float(vix_df.tail(1), -1)
+        else:
+            regime["vix"] = None
+
+        fx_df = self.load("usd_cny")
+        if fx_df is not None and "close" in fx_df.columns and len(fx_df) >= 5:
+            regime["usd_cny"] = self._safe_float(fx_df.tail(1), -1)
+            curr = self._safe_float(fx_df.tail(1), -1)
+            prev = self._safe_float(fx_df.tail(5), -5)
+            regime["usd_cny_5d_change"] = self._pct_change(curr, prev) if curr and prev else None
+        else:
+            regime["usd_cny"] = None
+            regime["usd_cny_5d_change"] = None
+
+        from core.macro_calendar import available_asof
+        pmi_df = available_asof(self.load("pmi"), "pmi")
+        if pmi_df is not None and len(pmi_df) >= 2:
+            col = None
+            for c in ["value", "pmi", "制造业-指数"]:
+                if c in pmi_df.columns:
+                    col = c
+                    break
+            if col:
+                regime["pmi"] = self._safe_float(pmi_df.tail(1), -1, col=col)
+                prev_pmi = self._safe_float(pmi_df.tail(2), -2, col=col)
+                regime["pmi_change"] = round(regime["pmi"] - prev_pmi, 2) if regime["pmi"] and prev_pmi else None
+            else:
+                regime["pmi"] = None
+                regime["pmi_change"] = None
+        else:
+            regime["pmi"] = None
+            regime["pmi_change"] = None
+
+        return regime
+
+    def _regime_confidence_modifier(self, regime: Dict[str, Any],
+                                     signal_type: str = "neutral") -> Tuple[float, str]:
+        """Compute a confidence multiplier based on macro regime.
+
+        signal_type: "risk_on" | "risk_off" | "industrial" | "fx_cost" | "neutral"
+        Returns (multiplier, explanation).
+        Multiplier range: 0.5–1.2.
+        """
+        multiplier = 1.0
+        reasons = []
+
+        vix = regime.get("vix")
+        if vix is not None:
+            if vix > 30:
+                if signal_type == "risk_off":
+                    multiplier *= 1.2
+                    reasons.append(f"VIX={vix:.0f}>30 恐慌→利好避险")
+                elif signal_type == "risk_on":
+                    multiplier *= 0.6
+                    reasons.append(f"VIX={vix:.0f}>30 恐慌→利空风险资产")
+                else:
+                    multiplier *= 0.8
+                    reasons.append(f"VIX={vix:.0f}>30 恐慌→整体谨慎")
+            elif vix < 15:
+                if signal_type == "risk_on":
+                    multiplier *= 1.1
+                    reasons.append(f"VIX={vix:.0f}<15 平静→利好风险")
+                elif signal_type == "risk_off":
+                    multiplier *= 0.7
+                    reasons.append(f"VIX={vix:.0f}<15 平静→避险需求低")
+
+        pmi = regime.get("pmi")
+        pmi_change = regime.get("pmi_change")
+        if pmi is not None and signal_type == "industrial":
+            if pmi > 50 and pmi_change is not None and pmi_change > 0:
+                multiplier *= 1.15
+                reasons.append(f"PMI={pmi}扩张加速→利好工业金属")
+            elif pmi < 50 and pmi_change is not None and pmi_change < 0:
+                multiplier *= 0.6
+                reasons.append(f"PMI={pmi}收缩减速→利空工业金属")
+            elif pmi < 50:
+                multiplier *= 0.8
+                reasons.append(f"PMI={pmi}<50→工业需求偏弱")
+
+        fx_change = regime.get("usd_cny_5d_change")
+        if fx_change is not None and signal_type == "fx_cost":
+            if fx_change > 0.01:
+                multiplier *= 1.15
+                reasons.append(f"人民币5日贬{fx_change*100:.1f}%→进口成本上升")
+            elif fx_change < -0.01:
+                multiplier *= 0.8
+                reasons.append(f"人民币5日升{abs(fx_change)*100:.1f}%→进口成本下降")
+
+        multiplier = max(0.5, min(1.2, multiplier))
+        explanation = "; ".join(reasons) if reasons else "无显著regime信号"
+        return round(multiplier, 2), explanation
+
     def _continuous_signal(self, zscore: Optional[float], percentile: Optional[float] = None,
                            change: Optional[float] = None, change_is_cost: bool = True) -> float:
         """将统计量映射为连续信号强度 (-1.0 ~ +1.0)
