@@ -178,7 +178,9 @@ class BaseFactor(ABC):
                      holding_days: int = 5, stop_loss: float = -0.02,
                      confidence: float = 0.5, strength: float = None,
                      factor_value_type: str = None, factor_direction: str = None,
-                     horizon_days: int = None, **kwargs) -> Dict[str, Any]:
+                     horizon_days: int = None,
+                     factor_score: float = None, risk_modifier: float = None,
+                     **kwargs) -> Dict[str, Any]:
         raw_strength = strength if strength is not None else (0.5 if direction == "BUY" else -0.5)
         try:
             normalized_strength = max(-1.0, min(1.0, float(raw_strength)))
@@ -190,6 +192,16 @@ class BaseFactor(ABC):
         except (TypeError, ValueError):
             normalized_confidence = 0.5
 
+        # trade_signal_strength: direction-aligned trade conviction.
+        # Positive = BUY conviction, negative = SELL conviction, 0 = HOLD.
+        # Unlike raw `strength`, this is always consistent with `direction`.
+        if direction == "BUY":
+            trade_signal_strength = abs(normalized_strength)
+        elif direction == "SELL":
+            trade_signal_strength = -abs(normalized_strength)
+        else:
+            trade_signal_strength = 0.0
+
         meta = kwargs.pop("meta", {}) or {}
         trigger = kwargs.get("trigger")
         factor_value = kwargs.pop("factor_value", None)
@@ -199,6 +211,7 @@ class BaseFactor(ABC):
             "direction": direction,
             "strength": normalized_strength,
             "signal_strength": normalized_strength,
+            "trade_signal_strength": round(trade_signal_strength, 4),
             "reason": reason,
             "holding_days": holding_days,
             "stop_loss": stop_loss,
@@ -208,6 +221,8 @@ class BaseFactor(ABC):
             "factor_value_type": factor_value_type,
             "factor_direction": factor_direction,
             "horizon_days": horizon_days or holding_days,
+            "factor_score": factor_score,
+            "risk_modifier": risk_modifier,
             "meta": meta,
         }
         # Keep legacy flat fields for current API consumers, while also

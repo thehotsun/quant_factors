@@ -107,7 +107,12 @@ class SignalAggregator:
 
         for s in signals:
             direction = s.get("direction", "HOLD")
-            strength = s.get("strength", 0.0)
+            # Prefer trade_signal_strength (direction-aligned) over raw strength
+            trade_str = s.get("trade_signal_strength")
+            if trade_str is not None:
+                strength = trade_str
+            else:
+                strength = s.get("strength", 0.0)
             confidence = s.get("confidence", 0.5)
             weight = abs(strength) * confidence
             total_weight += weight
@@ -143,7 +148,8 @@ class SignalAggregator:
             "sell_count": len(sell_signals),
             "components": [
                 {"trigger": s.get("trigger", ""), "direction": s.get("direction", ""),
-                 "strength": s.get("strength", 0), "confidence": s.get("confidence", 0)}
+                 "strength": s.get("strength", 0), "trade_signal_strength": s.get("trade_signal_strength"),
+                 "confidence": s.get("confidence", 0)}
                 for s in signals
             ]
         }
