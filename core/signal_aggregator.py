@@ -74,17 +74,29 @@ class SignalAggregator:
         if not valid:
             return None
 
+        raw_count = len(valid)
+        dedup_applied = False
+
         if dedup:
             valid = SignalAggregator._dedup_correlated(valid)
+            dedup_applied = len(valid) != raw_count or any(s.get("dedup_group") for s in valid)
 
         if method == "weighted":
-            return SignalAggregator._weighted_aggregate(valid)
+            result = SignalAggregator._weighted_aggregate(valid)
         elif method == "voting":
-            return SignalAggregator._voting_aggregate(valid)
+            result = SignalAggregator._voting_aggregate(valid)
         elif method == "strongest":
-            return SignalAggregator._strongest_aggregate(valid)
+            result = SignalAggregator._strongest_aggregate(valid)
         else:
-            return SignalAggregator._weighted_aggregate(valid)
+            result = SignalAggregator._weighted_aggregate(valid)
+
+        # Attach transparency metadata
+        result["raw_signal_count"] = raw_count
+        result["effective_signal_count"] = len(valid)
+        result["dedup_applied"] = dedup_applied
+        result["driver_groups"] = SignalAggregator._extract_driver_groups(valid)
+        result["conflict_score"] = SignalAggregator._compute_conflict_score(valid)
+        return result
 
     @staticmethod
     def _weighted_aggregate(signals: List[Dict]) -> Dict[str, Any]:
@@ -186,3 +198,39 @@ class SignalAggregator:
                 "reason": f"信号冲突: BUY({buy_signal.get('trigger')}) vs SELL({sell_signal.get('trigger')})",
                 "conflict_resolved": False,
             }
+
+    @staticmethod
+    def _extract_driver_groups(signals: List[Dict]) -> Dict[str, List[str]]:
+        """Group signals by their dedup_group (trigger correlation group)."""
+        groups: Dict[str, List[str]] = {}
+        for s in signals:
+            group = s.get("dedup_group", "ungrouped")
+            trigger = s.get("trigger", "unknown")
+            groups.setdefault(group, []).append(trigger)
+        return groups
+
+    @staticmethod
+    def _compute_conflict_score(signals: List[Dict]) -> float:
+        """Compute a 0.0–1.0 conflict score.
+
+        0.0 = all signals agree on direction; 1.0 = maximum disagreement.
+        Based on the ratio of opposing weight to total weight.
+        """
+        if len(signals) <= 1:
+            return 0.0
+
+        buy_weight = 0.0
+        sell_weight = 0.0
+        for s in signals:
+            w = abs(s.get("strength", 0)) * s.get("confidence", 0.5)
+            if s.get("direction") == "BUY":
+                buy_weight += w
+            elif s.get("direction") == "SELL":
+                sell_weight += w
+
+        total = buy_weight + sell_weight
+        if total == 0:
+            return 0.0
+        # Conflict = minority weight / total weight (0 if unanimous, max 0.5 if split)
+        minority = min(buy_weight, sell_weight)
+        return round(min(1.0, 2.0 * minority / total), 4)
