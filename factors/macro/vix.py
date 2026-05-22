@@ -85,6 +85,7 @@ class VixFactor(BaseFactor):
         vix = data.get("vix_current")
         regime = data.get("risk_regime", "")
         crisis = data.get("liquidity_crisis")
+        pct = data.get("vix_percentile")
 
         if crisis:
             return self._make_signal(
@@ -95,31 +96,41 @@ class VixFactor(BaseFactor):
                 vix=vix, risk_regime=regime, liquidity_crisis=crisis,
             )
 
-        if vix is not None and vix > 30 and not crisis:
+        # Percentile-based thresholds (fallback to fixed if percentile unavailable)
+        high_threshold = pct is not None and pct >= 90
+        extreme_threshold = pct is not None and pct >= 95
+        low_threshold = pct is not None and pct <= 10
+        # Fallback to fixed thresholds
+        if pct is None:
+            high_threshold = vix is not None and vix > 30
+            extreme_threshold = vix is not None and vix > 35
+            low_threshold = vix is not None and vix < 12
+
+        if high_threshold and not crisis:
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
-                reason=f"VIX={vix:.0f}>30→市场恐慌→避险需求→利好黄金",
+                reason=f"VIX={vix:.0f}(历史{pct:.0f}%分位)→市场恐慌→避险需求→利好黄金" if pct else f"VIX={vix:.0f}>30→市场恐慌→避险需求→利好黄金",
                 holding_days=10, stop_loss=-0.03, confidence=0.65,
                 strength=0.65, trigger="vix_high_gold_buy",
-                vix=vix, risk_regime=regime,
+                vix=vix, risk_regime=regime, vix_percentile=pct,
             )
 
-        if vix is not None and vix > 35:
+        if extreme_threshold:
             return self._make_signal(
                 asset="沪深300(IF)", direction="BUY",
-                reason=f"VIX={vix:.0f}>35→极度恐慌→超卖→恐慌消退后反弹→布局风险资产",
+                reason=f"VIX={vix:.0f}(历史{pct:.0f}%分位)→极度恐慌→超卖→恐慌消退后反弹" if pct else f"VIX={vix:.0f}>35→极度恐慌→超卖→恐慌消退后反弹",
                 holding_days=15, stop_loss=-0.05, confidence=0.60,
                 strength=0.60, trigger="vix_extreme_equity_buy",
-                vix=vix, risk_regime=regime,
+                vix=vix, risk_regime=regime, vix_percentile=pct,
             )
 
-        if vix is not None and vix < 12:
+        if low_threshold:
             return self._make_signal(
                 asset="沪深300(IF)", direction="SELL",
-                reason=f"VIX={vix:.0f}<12→过度乐观→警惕黑天鹅→适度减仓",
+                reason=f"VIX={vix:.0f}(历史{pct:.0f}%分位)→过度乐观→警惕黑天鹅→适度减仓" if pct else f"VIX={vix:.0f}<12→过度乐观→警惕黑天鹅→适度减仓",
                 holding_days=10, stop_loss=-0.03, confidence=0.50,
                 strength=-0.45, trigger="vix_complacency",
-                vix=vix, risk_regime=regime,
+                vix=vix, risk_regime=regime, vix_percentile=pct,
             )
         return None
 

@@ -92,6 +92,18 @@ class CPIFactor(BaseFactor):
         if trend and "加速" in trend and current > 3.0:
             result["inflation_regime"] += "+加速→警惕"
 
+        # Add historical percentile as supplementary context
+        if current is not None:
+            cpi_col = None
+            for c in ["全国-当月", "全国-同比增长", "value"]:
+                if c in df.columns:
+                    cpi_col = c
+                    break
+            if cpi_col:
+                hist = pd.to_numeric(df[cpi_col], errors="coerce").dropna()
+                if len(hist) >= 10:
+                    result["cpi_percentile"] = round(self._rolling_percentile(current, hist, window=len(hist)), 1)
+
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
