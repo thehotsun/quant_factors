@@ -10,7 +10,8 @@
 │ 链条2：鸡肉现货价格异动 → 短期供需                                           │
 │   鸡肉现货单日涨>3% → 短期需求爆发或供给收缩 → BUY                              │
 │                                                                     │
-│ 数据：生猪期货(ak.futures_main_sina LH) + 鸡肉现货(ak.futures_spot_price)     │
+│ 数据状态：生猪期货(pork_futures) + 鸡肉现货(chicken_spot)                  │
+│   chicken_spot 暂未接入：尚未找到稳定公开接口；禁止用网页 HTML 解析或替代口径冒充。 │
 └─────────────────────────────────────────────────────────────────────┘
 """
 from typing import Optional, Dict, Any

@@ -40,7 +40,7 @@ class DataRefreshSafetyTest(unittest.TestCase):
     def test_audit_classifies_known_missing_dependencies(self):
         report = audit_chains(run_calculate=False)
         summary = report["summary"]
-        self.assertEqual(summary["known_missing_deps"], 2)
+        self.assertEqual(summary["known_missing_deps"], 1)
         self.assertEqual(summary["unexpected_missing_deps"], 0)
 
         known = {
@@ -49,7 +49,7 @@ class DataRefreshSafetyTest(unittest.TestCase):
             for dep in item.get("known_missing_deps", [])
         }
         self.assertIn(("pig_chicken_spread", "chicken_spot"), known)
-        self.assertIn(("term_structure", "pork_futures_far"), known)
+        self.assertNotIn(("term_structure", "pork_futures_far"), known)
 
 
 if __name__ == "__main__":

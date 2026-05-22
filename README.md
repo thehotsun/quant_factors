@@ -295,11 +295,11 @@ quant_factors/
 | 项目 | 内容 |
 |------|------|
 | **入口** | `/analyze/pig_chicken_spread` |
-| **作用** | 猪价/鸡价比>2.5→猪肉太贵→消费者转向鸡肉 |
-| **💡 小白解读** | 猪肉和鸡肉是餐桌上的替代品。猪肉太贵了，老百姓就多吃鸡肉，鸡肉需求增加→涨价。这个因子通过猪鸡比价关系，捕捉消费替代效应 |
-| **计算逻辑** | 生猪期货价 / 鸡肉现货价 |
-| **信号规则** | 猪鸡比>2.5 → BUY鸡肉概念股；猪鸡比<1.5 → SELL鸡肉概念股；鸡肉现货单日涨≥3% → BUY |
-| **数据依赖** | `pork_futures`, `chicken_spot` |
+| **作用** | 猪价/鸡价比>2.5→猪肉太贵→消费者转向鸡肉（当前因缺少可用鸡肉现货接口，链条保留但不产出比价信号） |
+| **💡 小白解读** | 猪肉和鸡肉是餐桌上的替代品。猪肉太贵了，老百姓就多吃鸡肉，鸡肉需求增加→涨价。这个因子的逻辑成立，但 `chicken_spot` 暂未接入：目前没有找到稳定公开历史接口，不能用网页 HTML 解析结果或“白条鸡批发价”冒充白羽肉鸡棚前价。 |
+| **计算逻辑** | 生猪期货价 / 鸡肉现货价；若 `chicken_spot.parquet` 不存在，则返回空比价并保持 HOLD |
+| **信号规则** | 有可靠 `chicken_spot` 数据时：猪鸡比>2.5 → BUY鸡肉概念股；猪鸡比<1.5 → SELL鸡肉概念股；鸡肉现货单日涨≥3% → BUY |
+| **数据依赖** | `pork_futures`, `chicken_spot`（known missing / unresolved） |
 
 #### 1.10 蛋料比→鸡蛋信号（egg_feed_ratio）
 
@@ -681,9 +681,8 @@ python download_history.py
 | 分类 | 文件名 | 说明 |
 |------|--------|------|
 | 肉类 | `pork_futures.parquet` | 生猪期货(LH) |
-| | `pork_futures_far.parquet` | 生猪远月期货 |
+| | `pork_futures_far.parquet` | 生猪远月/主力期货代理：AKShare 基差日表 `dominant_contract_price` |
 | | `egg_futures.parquet` | 鸡蛋期货(JD) |
-| | `chicken_spot.parquet` | 白羽肉鸡现货 |
 | 饲料 | `soybean_meal_futures.parquet` | 豆粕期货(M) |
 | | `corn_futures.parquet` | 玉米期货(C) |
 | | `soybean_domestic_futures.parquet` | 国产大豆(A) |
@@ -710,6 +709,8 @@ python download_history.py
 | | `tips_yield.parquet` | 美国TIPS收益率(实际利率) |
 | | `social_financing.parquet` | 社融规模增量 |
 | | `vix.parquet` | VIX恐慌指数 |
+
+> **暂未接入的数据**：`chicken_spot.parquet`（鸡肉现货/白羽肉鸡）。当前未找到稳定公开历史接口；项目不会解析新闻/搜索 HTML，也不会把“白条鸡批发价”等不同口径数据冒充为白羽肉鸡棚前价。相关链条 `pig_chicken_spread` 会把该依赖视为 known missing。
 
 ### 3. 启动服务
 

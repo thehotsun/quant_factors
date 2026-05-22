@@ -23,7 +23,6 @@ from core.settings import load_chains_config  # noqa: E402
 REQUIRED_SIGNAL_KEYS = {"asset", "direction", "strength", "signal_strength", "reason", "confidence", "trigger", "meta"}
 KNOWN_MISSING_DATA_DEPS = {
     "pig_chicken_spread": {"chicken_spot"},
-    "term_structure": {"pork_futures_far"},
 }
 
 

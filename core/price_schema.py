@@ -20,7 +20,7 @@ PRICE_DATA_NAMES = {
     "iron_ore_futures", "natural_gas_futures", "brent_oil", "cbot_soybean",
     "vix", "chicken_spot",
 }
-KNOWN_MISSING_PRICE_DATA = {"chicken_spot", "pork_futures_far"}
+KNOWN_MISSING_PRICE_DATA = {"chicken_spot"}
 REQUIRED_PRICE_COLUMNS = {"date", "close"}
 EXPLICIT_PRICE_COLUMNS = {"close_raw", "close_adj", "return_raw", "return_adj"}
 
