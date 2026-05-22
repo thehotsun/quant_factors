@@ -172,6 +172,65 @@ class BaseFactor(ABC):
         except Exception:
             return None
 
+    def _rolling_percentile(self, value: float, series: pd.Series, window: int = 250) -> float:
+        """Compute the percentile of value within the rolling window.
+
+        Returns 0–100.  Used to replace fixed absolute thresholds with
+        history-relative position.
+        """
+        clean = pd.to_numeric(series.tail(window), errors="coerce").dropna()
+        if len(clean) < 5:
+            return 50.0  # neutral default
+        return float((clean < value).sum() / len(clean) * 100)
+
+    def _rolling_zscore(self, value: float, series: pd.Series, window: int = 250) -> float:
+        """Compute the z-score of value within the rolling window.
+
+        Used to replace fixed thresholds with statistical deviation.
+        """
+        clean = pd.to_numeric(series.tail(window), errors="coerce").replace(
+            [np.inf, -np.inf], np.nan
+        ).dropna()
+        if len(clean) < 5:
+            return 0.0
+        mean = clean.mean()
+        std = clean.std()
+        if std == 0 or np.isnan(std):
+            return 0.0
+        return float((value - mean) / std)
+
+    def _percentile_signal(self, value: float, series: pd.Series,
+                           low_pct: float = 20, high_pct: float = 80,
+                           window: int = 250) -> str:
+        """Classify value as buy/sell/hold based on historical percentile.
+
+        value below low_pct → BUY (undervalued)
+        value above high_pct → SELL (overvalued)
+        otherwise → HOLD
+        """
+        pct = self._rolling_percentile(value, series, window)
+        if pct <= low_pct:
+            return "BUY"
+        if pct >= high_pct:
+            return "SELL"
+        return "HOLD"
+
+    def _zscore_signal(self, value: float, series: pd.Series,
+                       buy_z: float = -2.0, sell_z: float = 2.0,
+                       window: int = 250) -> str:
+        """Classify value as buy/sell/hold based on z-score.
+
+        value z-score below buy_z → BUY (oversold)
+        value z-score above sell_z → SELL (overbought)
+        otherwise → HOLD
+        """
+        z = self._rolling_zscore(value, series, window)
+        if z <= buy_z:
+            return "BUY"
+        if z >= sell_z:
+            return "SELL"
+        return "HOLD"
+
     def _continuous_signal(self, zscore: Optional[float], percentile: Optional[float] = None,
                            change: Optional[float] = None, change_is_cost: bool = True) -> float:
         """将统计量映射为连续信号强度 (-1.0 ~ +1.0)
