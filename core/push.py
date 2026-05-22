@@ -259,66 +259,34 @@ def _format_price_position(data_bus, data_dep: str, lookback_days: int = 250) ->
 
 
 def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> str:
-    lines = []
-    chain_name = composite_results.get("chain", "未知")
-    description = composite_results.get("description", "")
-    aggregated = composite_results.get("aggregated_signal")
-    signals = composite_results.get("active_signals", [])
-    all_results = composite_results.get("all_results", {})
+    """Format composite chain results as markdown for push messages.
 
-    lines.append(f"**{chain_name}** - {description}")
-    lines.append("")
+    Delegates to core.report_formatter for the canonical structure, then
+    enriches with price context from data_bus.
+    """
+    from core.report_formatter import format_chain_report, format_chain_report_markdown, format_trend, period_label, position_label
 
-    if aggregated:
-        direction = aggregated.get("direction", "HOLD")
-        strength = aggregated.get("strength", 0)
-        confidence = aggregated.get("confidence", 0)
-        emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⚪"}.get(direction, "⚪")
-        lines.append(f"{emoji} **综合信号: {direction}** | 强度: {strength:.2f} | 置信度: {confidence:.2f}")
-        lines.append(f"信号数: {aggregated.get('signal_count', 0)} (BUY:{aggregated.get('buy_count', 0)} SELL:{aggregated.get('sell_count', 0)})")
-    else:
-        lines.append("⚪ 综合信号: HOLD（无有效信号）")
+    report = format_chain_report(composite_results)
 
-    # 近5日价格趋势 + 历史位置
+    # Build price context if data_bus is available
+    price_context = []
     if data_bus is not None:
+        chain_name = composite_results.get("chain", "")
         key_assets = _KEY_ASSETS.get(chain_name, [])
-        trend_lines = []
         for data_dep, label in key_assets:
             prices = _get_price_trend(data_bus, data_dep)
-            if prices:
-                trend_str = _format_trend(prices)
-                # 历史分位
-                pos_str = _format_price_position(data_bus, data_dep)
-                line = f"- {label}: {trend_str}"
-                if pos_str:
-                    line += f"\n  {pos_str}"
-                trend_lines.append(line)
-        if trend_lines:
-            lines.append("")
-            lines.append("📊 **近5日价格:**")
-            lines.extend(trend_lines)
+            trend_str = format_trend(prices) if prices else ""
+            pos = _get_price_position(data_bus, data_dep)
+            pos_str = ""
+            if pos:
+                pct = pos["percentile"]
+                lbl = position_label(pct)
+                period = period_label(pos["sample_days"])
+                pos_str = f"📍 {period}：仅{pct:.0f}%的交易日比现在更便宜（{lbl}）"
+            if trend_str:
+                price_context.append({"label": label, "trend": trend_str, "position": pos_str})
 
-    if signals:
-        lines.append("")
-        lines.append("**活跃信号:**")
-        for s in signals[:10]:
-            trigger = s.get("trigger", s.get("_chain", ""))
-            direction = s.get("direction", "")
-            reason = s.get("reason", "")
-            emoji = {"BUY": "🟢", "SELL": "🔴"}.get(direction, "")
-            lines.append(f"- {emoji} **{trigger}** ({direction}): {reason[:80]}")
-
-    errors = []
-    for name, result in all_results.items():
-        if isinstance(result, dict) and result.get("error"):
-            errors.append(f"- {name}: {result['error']}")
-
-    if errors:
-        lines.append("")
-        lines.append("**⚠️ 异常:**")
-        lines.extend(errors)
-
-    return "\n".join(lines)
+    return format_chain_report_markdown(report, price_context=price_context or None)
 
 
 _push_manager: Optional[PushManager] = None
