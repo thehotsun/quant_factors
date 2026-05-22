@@ -24,6 +24,71 @@ class SignalAggregator:
 
     CORRELATION_GROUPS = _load_correlation_groups()
 
+    # Trigger → macro driver classification for driver-based dedup
+    DRIVER_PATTERNS = {
+        "growth": ["pmi", "gdp", "industrial", "manufacturing"],
+        "inflation": ["cpi", "ppi", "inflation", "oil_", "crude"],
+        "real_rate": ["tips", "real_rate", "gold_tips"],
+        "fx": ["forex", "usd_cny", "rmb", "depreciation", "appreciation"],
+        "risk_off": ["vix", "panic", "safe_haven", "gold_vix"],
+        "inventory": ["eia", "stock", "inventory", "crude_stock"],
+        "cost": ["feed_cost", "iron_ore", "cost_push", "crush_margin"],
+        "seasonality": ["seasonal", "season"],
+        "supply": ["supply_shock", "weather", "drought", "flood"],
+    }
+
+    @classmethod
+    def _classify_driver(cls, trigger: str) -> str:
+        """Classify a trigger into a macro driver category."""
+        if not trigger:
+            return "other"
+        t = trigger.lower()
+        for driver, patterns in cls.DRIVER_PATTERNS.items():
+            if any(p in t for p in patterns):
+                return driver
+        return "other"
+
+    @classmethod
+    def _dedup_drivers(cls, signals: List[Dict]) -> List[Dict]:
+        """Discount signals that share the same macro driver.
+
+        When multiple signals are driven by the same macro factor (e.g., two
+        growth-linked signals), they are not independent evidence.  Apply a
+        decay factor of 1/sqrt(n) per driver group, similar to trigger-based
+        dedup but at a higher conceptual level.
+        """
+        if len(signals) <= 1:
+            return signals
+
+        # Group by driver
+        driver_indices: Dict[str, List[int]] = {}
+        for i, s in enumerate(signals):
+            trigger = s.get("trigger", "")
+            driver = s.get("driver") or cls._classify_driver(trigger)
+            driver_indices.setdefault(driver, []).append(i)
+
+        # Only apply dedup where a driver has 2+ signals
+        affected = {d: idxs for d, idxs in driver_indices.items() if len(idxs) >= 2}
+        if not affected:
+            return signals
+
+        result = [dict(s) for s in signals]
+        for driver, indices in affected.items():
+            n = len(indices)
+            decay = 1.0 / np.sqrt(n)
+            for idx in indices:
+                orig_strength = result[idx].get("strength", 0.0)
+                orig_confidence = result[idx].get("confidence", 0.5)
+                result[idx]["strength"] = round(orig_strength * decay, 4)
+                result[idx]["confidence"] = round(orig_confidence * decay, 4)
+                result[idx]["driver_dedup_group"] = driver
+                result[idx]["driver_dedup_factor"] = round(decay, 4)
+                # Also set driver for downstream grouping
+                if "driver" not in result[idx]:
+                    result[idx]["driver"] = driver
+
+        return result
+
     @classmethod
     def _dedup_correlated(cls, signals: List[Dict]) -> List[Dict]:
         """对高度相关的信号进行降权去重"""
@@ -79,7 +144,8 @@ class SignalAggregator:
 
         if dedup:
             valid = SignalAggregator._dedup_correlated(valid)
-            dedup_applied = len(valid) != raw_count or any(s.get("dedup_group") for s in valid)
+            valid = SignalAggregator._dedup_drivers(valid)
+            dedup_applied = len(valid) != raw_count or any(s.get("dedup_group") or s.get("driver_dedup_group") for s in valid)
 
         if method == "weighted":
             result = SignalAggregator._weighted_aggregate(valid)
@@ -207,12 +273,16 @@ class SignalAggregator:
 
     @staticmethod
     def _extract_driver_groups(signals: List[Dict]) -> Dict[str, List[str]]:
-        """Group signals by their dedup_group (trigger correlation group)."""
+        """Group signals by their macro driver (from dedup or classification)."""
         groups: Dict[str, List[str]] = {}
         for s in signals:
-            group = s.get("dedup_group", "ungrouped")
+            driver = (s.get("driver") or s.get("driver_dedup_group")
+                      or s.get("dedup_group"))
+            if not driver:
+                # Classify from trigger even when dedup is off
+                driver = SignalAggregator._classify_driver(s.get("trigger", ""))
             trigger = s.get("trigger", "unknown")
-            groups.setdefault(group, []).append(trigger)
+            groups.setdefault(driver, []).append(trigger)
         return groups
 
     @staticmethod

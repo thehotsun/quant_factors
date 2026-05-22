@@ -49,8 +49,8 @@ class AggregatorTransparencyTest(unittest.TestCase):
         ]
         result = SignalAggregator.aggregate(signals, dedup=False)
         groups = result["driver_groups"]
-        self.assertIn("ungrouped", groups)
-        self.assertEqual(len(groups["ungrouped"]), 2)
+        self.assertIn("other", groups)
+        self.assertEqual(len(groups["other"]), 2)
 
     def test_driver_groups_with_dedup_group(self):
         signals = [
