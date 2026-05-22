@@ -91,31 +91,39 @@ class ForexCommodityLink(BaseFactor):
         if forex_change is None:
             return None
 
+        regime = self._load_regime_data()
+
         if forex_change >= 0.01 and soybean_change is not None and soybean_change < forex_change:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "fx_cost")
             return self._make_signal(
                 asset="豆粕期货(M)", direction="BUY",
                 reason=f"人民币5日贬值{forex_change*100:.1f}%但大豆仅涨{soybean_change*100:.1f}%，进口成本传导滞后→大豆补涨",
-                holding_days=10, stop_loss=-0.02, confidence=0.55,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.55 * regime_mult, 2),
                 strength=0.55, trigger="forex_soybean_divergence",
                 forex_change_5d=forex_change, soybean_change_5d=soybean_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
 
         if forex_change >= 0.02:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "fx_cost")
             return self._make_signal(
                 asset="豆粕期货(M)", direction="BUY",
                 reason=f"人民币5日大幅贬值{forex_change*100:.1f}%，进口大豆成本上升→豆粕受益",
-                holding_days=10, stop_loss=-0.02, confidence=0.55,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.55 * regime_mult, 2),
                 strength=0.55, trigger="forex_depreciation_import",
                 forex_change_5d=forex_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
 
         if forex_change <= -0.01:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "fx_cost")
             return self._make_signal(
                 asset="豆粕期货(M)", direction="SELL",
                 reason=f"人民币5日升值{abs(forex_change)*100:.1f}%，进口成本下降→豆粕承压",
-                holding_days=5, stop_loss=-0.02, confidence=0.50,
+                holding_days=5, stop_loss=-0.02, confidence=round(0.50 * regime_mult, 2),
                 strength=-0.50, trigger="forex_appreciation_import",
                 forex_change_5d=forex_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
         return None
 

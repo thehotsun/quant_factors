@@ -104,31 +104,40 @@ class OilGoldLink(BaseFactor):
         if oil_change is None:
             return None
 
+        # Load regime data for confidence adjustment
+        regime = self._load_regime_data()
+
         if oil_change >= surge_threshold and gold_change is not None and gold_change < oil_change:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "risk_off")
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
                 reason=f"原油20日涨{oil_change*100:.1f}%但黄金仅涨{gold_change*100:.1f}%，通胀预期未充分定价→黄金补涨",
-                holding_days=10, stop_loss=-0.02, confidence=0.55,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.55 * regime_mult, 2),
                 strength=0.55, trigger="oil_surge_gold_lag",
                 oil_change_20d=oil_change, gold_change_20d=gold_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
 
         if oil_change <= -crash_threshold:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "risk_off")
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
                 reason=f"原油20日暴跌{oil_change*100:.1f}%，恐慌情绪→避险需求",
-                holding_days=10, stop_loss=-0.02, confidence=0.55,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.55 * regime_mult, 2),
                 strength=0.55, trigger="oil_crash_gold_safe",
                 oil_change_20d=oil_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
 
         if corr is not None and corr > 0.5 and oil_change >= corr_threshold:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "risk_off")
             return self._make_signal(
                 asset="黄金期货(AU)", direction="BUY",
                 reason=f"油金60日相关性{corr}，油价涨{oil_change*100:.1f}%→通胀传导→黄金受益",
-                holding_days=10, stop_loss=-0.02, confidence=0.50,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.50 * regime_mult, 2),
                 strength=0.50, trigger="oil_gold_corr_high",
                 oil_change_20d=oil_change, oil_gold_corr=corr,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
         return None
 

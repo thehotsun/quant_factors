@@ -83,31 +83,39 @@ class PMIMetalsLink(BaseFactor):
         if pmi is None:
             return None
 
+        regime = self._load_regime_data()
+
         if pmi > 51 and pmi_change is not None and pmi_change > 0.5 and copper_change is not None and copper_change < 0.02:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "industrial")
             return self._make_signal(
                 asset="铜期货(CU)", direction="BUY",
                 reason=f"PMI={pmi}加速扩张(+{pmi_change})但铜仅涨{copper_change*100:.1f}%，需求预期未充分定价→铜补涨",
-                holding_days=15, stop_loss=-0.03, confidence=0.60,
+                holding_days=15, stop_loss=-0.03, confidence=round(0.60 * regime_mult, 2),
                 strength=0.60, trigger="pmi_copper_divergence",
                 pmi=pmi, pmi_change=pmi_change, copper_change_20d=copper_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
 
         if pmi < 49 and pmi_change is not None and pmi_change < -0.5:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "industrial")
             return self._make_signal(
                 asset="铜期货(CU)", direction="SELL",
                 reason=f"PMI={pmi}加速收缩({pmi_change})，制造业需求下降→铜承压",
-                holding_days=10, stop_loss=-0.02, confidence=0.55,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.55 * regime_mult, 2),
                 strength=-0.55, trigger="pmi_contraction_copper",
                 pmi=pmi, pmi_change=pmi_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
 
         if pmi > 50 and pmi_change is not None and pmi_change > 0:
+            regime_mult, regime_expl = self._regime_confidence_modifier(regime, "industrial")
             return self._make_signal(
                 asset="铝期货(AL)", direction="BUY",
                 reason=f"PMI={pmi}扩张中，建筑+汽车需求→铝受益",
-                holding_days=10, stop_loss=-0.02, confidence=0.50,
+                holding_days=10, stop_loss=-0.02, confidence=round(0.50 * regime_mult, 2),
                 strength=0.50, trigger="pmi_expansion_aluminum",
                 pmi=pmi, pmi_change=pmi_change,
+                risk_modifier=regime_mult, regime_note=regime_expl,
             )
         return None
 
