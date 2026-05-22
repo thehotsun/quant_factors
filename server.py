@@ -9,6 +9,7 @@ from core.composite_runner import run_composite_chain
 from core.ic_service import compute_daily_ic
 from core.push_service import send_chain_push, push_daily_composite_reports
 from core.chain_config import build_chain_definitions, check_metadata_consistency
+from evaluation.trigger_backtest import trigger_backtest, format_trigger_report
 
 from core.factor_registry import FactorRegistry
 from core.data_bus import DataBus
@@ -324,6 +325,15 @@ def _init_scheduler():
         _daily_ic_compute,
         _daily_push,
     )
+
+
+@app.route('/trigger_backtest', methods=['GET'])
+def trigger_backtest_endpoint():
+    _runner.ensure_imported()
+    days = int(request.args.get('days', 365))
+    min_samples = int(request.args.get('min_samples', 3))
+    report = trigger_backtest(CHAINS_CONFIG, _data_bus, _signal_logger, days=days, min_samples=min_samples)
+    return jsonify(report)
 
 
 @app.route('/push/<chain_name>', methods=['GET'])
