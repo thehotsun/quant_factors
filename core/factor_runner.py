@@ -24,6 +24,26 @@ FACTOR_VALUE_KEYS = [
     "pmi", "cost_per_jin", "vol_ratio", "seasonal_avg_return", "seasonal_win_rate",
 ]
 
+# Maps fallback key → factor_value_type for semantic clarity
+_VALUE_TYPE_MAP = {
+    "factor_value": None,  # already explicit
+    "zscore": "zscore", "zscore_20d": "zscore",
+    "ratio": "ratio", "pig_grain_ratio": "ratio", "egg_feed_ratio": "ratio",
+    "pig_chicken_ratio": "ratio", "copper_gold_ratio": "ratio", "oil_gas_ratio": "ratio",
+    "iron_rebar_ratio": "ratio",
+    "score": "score", "momentum_score": "score",
+    "value": "raw_value", "current_price": "raw_value", "current": "raw_value",
+    "current_cpi": "raw_value", "current_pmi": "raw_value", "latest": "raw_value",
+    "cpi_actual": "raw_value", "cbot_soybean": "raw_value", "vix_current": "raw_value",
+    "usd_cny": "raw_value", "domestic_soybean": "raw_value", "iron_ore_price": "raw_value",
+    "pmi": "raw_value",
+    "change": "return", "diff": "spread", "spread": "spread", "margin": "spread",
+    "crush_margin": "spread", "divergence": "spread",
+    "m2_yoy": "yoy", "sf_growth": "yoy",
+    "feed_cost_index": "index", "cost_per_jin": "cost",
+    "vol_ratio": "ratio", "seasonal_avg_return": "return", "seasonal_win_rate": "percentile",
+}
+
 
 def collect_factor_modules(chains_config: Dict[str, Dict[str, Any]]) -> List[str]:
     """Return unique factor modules declared by chains.yaml in deterministic order.
@@ -66,12 +86,18 @@ def extract_factor_value(data: Any, factor_name: str = "unknown") -> Optional[fl
 
 
 def normalize_factor_data(data: Any, factor_name: str = "unknown") -> Any:
-    """Attach a stable factor_value field without discarding legacy fields."""
+    """Attach stable factor_value / factor_value_type fields without discarding legacy fields."""
     if not isinstance(data, dict):
         return data
     result = dict(data)
     if result.get("factor_value") is None:
         result["factor_value"] = extract_factor_value(result, factor_name)
+    # Infer factor_value_type from the key that was used
+    if result.get("factor_value_type") is None:
+        for key in FACTOR_VALUE_KEYS:
+            if key in data and data[key] is not None:
+                result["factor_value_type"] = _VALUE_TYPE_MAP.get(key, "unknown")
+                break
     return result
 
 

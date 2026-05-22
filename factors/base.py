@@ -176,7 +176,9 @@ class BaseFactor(ABC):
 
     def _make_signal(self, asset: str, direction: str, reason: str,
                      holding_days: int = 5, stop_loss: float = -0.02,
-                     confidence: float = 0.5, strength: float = None, **kwargs) -> Dict[str, Any]:
+                     confidence: float = 0.5, strength: float = None,
+                     factor_value_type: str = None, factor_direction: str = None,
+                     horizon_days: int = None, **kwargs) -> Dict[str, Any]:
         raw_strength = strength if strength is not None else (0.5 if direction == "BUY" else -0.5)
         try:
             normalized_strength = max(-1.0, min(1.0, float(raw_strength)))
@@ -203,6 +205,9 @@ class BaseFactor(ABC):
             "confidence": normalized_confidence,
             "trigger": trigger,
             "factor_value": factor_value,
+            "factor_value_type": factor_value_type,
+            "factor_direction": factor_direction,
+            "horizon_days": horizon_days or holding_days,
             "meta": meta,
         }
         # Keep legacy flat fields for current API consumers, while also
