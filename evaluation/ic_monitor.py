@@ -275,3 +275,118 @@ class ICMonitor:
             if status:
                 report.append(status)
         return report
+
+    # ── Direction hit rate ────────────────────────────────────────────────
+
+    def compute_direction_hit_rate(self, factor_name: str, price_df: pd.DataFrame,
+                                    forward_days: int = 5, window: int = 60) -> Optional[Dict[str, Any]]:
+        """Compute direction hit rate: how often factor direction matches actual price move.
+
+        For each snapshot, check if factor_value > 0 → price went up, or vice versa.
+        Returns hit rate, sample size, and per-direction breakdown.
+        """
+        conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
+        snapshots = pd.read_sql_query(
+            "SELECT snapshot_date, factor_value FROM factor_snapshots WHERE factor_name = ? ORDER BY snapshot_date",
+            conn, params=(factor_name,)
+        )
+        conn.close()
+
+        if snapshots.empty or len(snapshots) < 10:
+            return None
+
+        snapshots["snapshot_date"] = pd.to_datetime(snapshots["snapshot_date"])
+        snapshots = snapshots.set_index("snapshot_date")
+
+        if "date" in price_df.columns:
+            price_df = price_df.copy()
+            price_df["date"] = pd.to_datetime(price_df["date"])
+            price_df = price_df.set_index("date")
+
+        price_col = "close" if "close" in price_df.columns else price_df.columns[0]
+        prices = price_df[price_col].astype(float).sort_index()
+        forward_returns = prices.pct_change(forward_days).shift(-forward_days)
+
+        common_dates = snapshots.index.intersection(forward_returns.dropna().index)
+        if len(common_dates) < 10:
+            return None
+
+        common_dates = common_dates[-window:] if len(common_dates) > window else common_dates
+
+        fv = snapshots.loc[common_dates, "factor_value"]
+        fr = forward_returns.loc[common_dates]
+
+        valid = fv.notna() & fr.notna()
+        fv = fv[valid]
+        fr = fr[valid]
+
+        if len(fv) < 10:
+            return None
+
+        # Direction agreement: factor_value sign matches return sign
+        factor_direction = np.sign(fv)
+        actual_direction = np.sign(fr)
+        hits = (factor_direction == actual_direction).sum()
+        total = len(fv)
+
+        # Per-direction breakdown
+        positive_mask = factor_direction > 0
+        negative_mask = factor_direction < 0
+
+        positive_hits = ((factor_direction > 0) & (actual_direction > 0)).sum()
+        positive_total = positive_mask.sum()
+        negative_hits = ((factor_direction < 0) & (actual_direction < 0)).sum()
+        negative_total = negative_mask.sum()
+
+        return {
+            "factor_name": factor_name,
+            "method": "direction_hit_rate",
+            "hit_rate": round(float(hits / total), 4),
+            "sample_size": total,
+            "forward_days": forward_days,
+            "buy_hit_rate": round(float(positive_hits / positive_total), 4) if positive_total > 0 else None,
+            "buy_samples": int(positive_total),
+            "sell_hit_rate": round(float(negative_hits / negative_total), 4) if negative_total > 0 else None,
+            "sell_samples": int(negative_total),
+            "status": "healthy" if hits / total > 0.55 else ("warning" if hits / total > 0.50 else "decayed"),
+        }
+
+    def evaluate_factor(self, factor_name: str, price_df: pd.DataFrame,
+                        factor_type: str = "time_series",
+                        forward_days: int = 5, window: int = 60) -> Dict[str, Any]:
+        """Unified factor evaluation that dispatches by factor type.
+
+        factor_type: 'time_series' | 'trigger' | 'cross_sectional'
+        Returns the appropriate evaluation result for the factor type.
+        """
+        if factor_type == "trigger":
+            # For trigger-based factors, use direction hit rate
+            result = self.compute_direction_hit_rate(
+                factor_name, price_df, forward_days=forward_days, window=window
+            )
+            if result is None:
+                return {"factor_name": factor_name, "method": "trigger", "error": "insufficient data"}
+            return result
+
+        if factor_type == "cross_sectional":
+            # Cross-sectional IC not yet supported (single-asset system)
+            return {
+                "factor_name": factor_name,
+                "method": "cross_sectional",
+                "error": "not supported in single-asset system",
+            }
+
+        # Default: time-series IC (Rank IC)
+        ic_result = self.compute_ic(factor_name, price_df, forward_days=forward_days, window=window)
+        if ic_result is None:
+            return {"factor_name": factor_name, "method": "time_series_ic", "error": "insufficient data"}
+
+        # Also compute direction hit rate as supplementary info
+        dir_result = self.compute_direction_hit_rate(
+            factor_name, price_df, forward_days=forward_days, window=window
+        )
+        if dir_result:
+            ic_result["direction_hit_rate"] = dir_result["hit_rate"]
+            ic_result["direction_status"] = dir_result["status"]
+
+        return ic_result
