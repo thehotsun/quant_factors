@@ -44,14 +44,6 @@ _FACTOR_PARAMS = load_factor_params()
 _runner = FactorRunner(CHAINS_CONFIG, _FACTOR_PARAMS, DATA_DIR, _signal_logger, _ic_monitor, chain_defs=CHAIN_DEFS)
 
 
-def _instantiate_factor(chain_name):
-    return _runner.instantiate(chain_name)
-
-
-def _run_factor_chain(chain_name):
-    return _runner.run_chain(chain_name)
-
-
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "ok"})
@@ -66,7 +58,7 @@ def analyze_auto(chain):
         if cfg.get("category") == "composite":
             return _run_composite_chain(chain)
 
-        result = _run_factor_chain(chain)
+        result = _runner.run_chain(chain)
         if result:
             return jsonify({
                 "chain": chain,
@@ -85,7 +77,7 @@ def _run_composite_chain(chain_name):
     return jsonify(run_composite_chain(
         chain_name,
         CHAINS_CONFIG,
-        _run_factor_chain,
+        _runner.run_chain,
         ensure_imported=_runner.ensure_imported,
     ))
 
@@ -128,7 +120,7 @@ def list_chains():
 @app.route('/factor/<chain_name>', methods=['GET'])
 def factor_data(chain_name):
     _runner.ensure_imported()
-    factor = _instantiate_factor(chain_name)
+    factor = _runner.instantiate(chain_name)
     if factor is None:
         return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
     try:
@@ -162,7 +154,7 @@ def list_registry():
 @app.route('/signal/<chain_name>', methods=['GET'])
 def signal_only(chain_name):
     _runner.ensure_imported()
-    factor = _instantiate_factor(chain_name)
+    factor = _runner.instantiate(chain_name)
     if factor is None:
         return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
     try:
@@ -344,7 +336,7 @@ def push_chain(chain_name):
     if cfg.get("category") == "composite":
         result = _run_composite_chain(chain_name)
     else:
-        factor_result = _run_factor_chain(chain_name)
+        factor_result = _runner.run_chain(chain_name)
         result = jsonify({
             "chain": chain_name,
             "description": cfg.get("description", ""),
