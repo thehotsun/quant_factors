@@ -1,598 +1,525 @@
-# Quant Factors 后续任务清单（代码架构 / 金融逻辑）
+# Quant Factors 架构狠审任务表（2026-05-23）
 
-日期：2026-05-21
-
-## 总原则
-
-- 这是个人项目，不做过度工程化的生产/测试/预发环境拆分。
-- 优先解决代码架构问题，再处理金融逻辑校准。
-- 代码优先级核心：依赖清晰、事实来源唯一、上下游边界明确、减少重复维护。
-- 金融逻辑改动必须尽量先有统计验证，不凭感觉直接改阈值、方向、持仓天数。
+> 本文档替换旧版架构/金融任务清单。  
+> 旧 A/B 系列任务已基本完成；本文只记录 **重新审查后仍然值得继续改的真实架构问题**。  
+> 原则：不为了“看起来工程化”而拆文件，只处理会影响一致性、可回测性、可维护性、数据口径可信度的问题。
 
 ---
 
-# A. 代码架构任务
+## 当前状态快照
 
-## A0. 当前最优先任务
+审查时间：2026-05-23 00:33 左右
 
-### A0-1. 消除因子导入重复维护
-
-**问题**
-
-当前因子需要同时维护多处：
-
-- `factors/**/*.py` 里的因子类和 `@FactorRegistry.register`
-- `config/chains.yaml`
-- `core/factor_runner.py` 里的 `FACTOR_IMPORTS`
-- README / AGENTS 文档
-
-这会导致新增或移动因子时容易漏改。
-
-**目标**
-
-让 `chains.yaml` 或 `FactorRegistry` 成为唯一事实来源，至少先去掉 `FACTOR_IMPORTS` 手写列表。
-
-**建议实现**
-
-第一阶段：
-
-- 从 `chains.yaml` 自动读取所有 `factor_module`
-- `FactorRunner.ensure_imported()` 自动 import 这些 module
-- 删除或弃用 `FACTOR_IMPORTS`
-
-第二阶段：
-
-- 遍历 `factors/**/*.py` 自动发现模块
-- import 后由 `FactorRegistry` 统一收集注册信息
-- `chains.yaml` 只描述链条组合、参数、symbol、far_symbol
-
-**验收标准**
-
-- 新增一个普通因子时，不需要再改 `FACTOR_IMPORTS`
-- `/registry` 和 `/chains` 数量一致或差异可解释
-- 增加测试：所有 `chains.yaml` 中的非 composite chain 都能成功 import + instantiate
-
----
-
-### A0-2. 统一链条配置、注册表、执行器之间的依赖关系
-
-**问题**
-
-现在存在三层概念：
-
-- `FactorRegistry`：因子注册元信息
-- `chains.yaml`：API 链条配置
-- `FactorRunner`：执行时实例化和运行
-
-三者边界还不清楚。比如 registry 有 description/asset/data_deps，chains.yaml 也有类似字段。
-
-**目标**
-
-明确职责：
-
-- `FactorRegistry`：因子本身的静态元数据
-- `chains.yaml`：运行配置、组合链、参数覆盖
-- `FactorRunner`：只负责执行，不保存业务事实
-
-**建议实现**
-
-- 写一个 `core/chain_config.py`
-- 启动时构建统一 `ChainDefinition`
-- 合并 registry metadata + yaml runtime config
-- 对重复字段做一致性检查
-
-**验收标准**
-
-- 若 `chains.yaml` 与 registry 的 `asset/data_deps/category` 不一致，启动或测试能提示
-- `FactorRunner` 不再关心 description/category 等展示字段
-
----
-
-### A0-3. 建立全链条 schema 检查脚本
-
-**问题**
-
-现在只有少数优先修复测试，不能系统检查 53 条链。
-
-**目标**
-
-新增一个检查工具，直接输出每条链是否满足最低标准。
-
-**建议文件**
-
-- `scripts/audit_chains.py`
-- 或 `tests/test_chain_integrity.py`
-
-**检查内容**
-
-每个非 composite chain：
-
-- 能 import
-- 能 instantiate
-- `calculate()` 不抛异常
-- 返回 dict
-- 有 `factor_value` 或可解释的缺失原因
-- `signal()` 返回 None 或稳定 signal schema
-- data_deps 文件存在或明确缺失
-
-每个 composite chain：
-
-- sub_chains 都存在
-- 子链不循环依赖
-- 聚合结果 schema 稳定
-
-**验收标准**
-
-- 一条命令可以看到所有链的问题清单
-- 后续改因子前后都可以跑这个检查
-
----
-
-## A1. 高优先级代码任务
-
-### A1-1. 拆分 `server.py` 中剩余业务逻辑
-
-**问题**
-
-`server.py` 仍然包含：
-
-- composite chain 执行
-- daily IC compute
-- daily push
-- push endpoint 业务逻辑
-- scheduler 初始化
-
-**目标**
-
-让 `server.py` 只保留 Flask route 和很薄的调用。
-
-**建议拆分**
+验证结果：
 
 ```text
-core/composite_runner.py
-core/ic_service.py
-core/push_service.py
+python -m unittest discover -s tests -q
+Ran 158 tests ... OK
+
+python scripts/audit_chains.py
+chains=53 factor_modules=32 errors=0 warnings=1 metadata_diffs=0 known_missing_deps=1 unexpected_missing_deps=0
 ```
 
-不需要复杂 create_app 环境切分；个人项目可以保持简单，但不要让 route 文件承担业务逻辑。
+唯一已知 warning：
 
-**验收标准**
+```text
+pig_chicken_spread: known missing data_deps files: ['chicken_spot']
+```
 
-- `_run_composite_chain` 从 `server.py` 移出
-- `_daily_ic_compute` 从 `server.py` 移出
-- `_daily_push` 从 `server.py` 移出
-- route 函数基本只做参数解析和 jsonify
+这是预期内缺口：`chicken_spot` 尚未找到稳定公开 API，不解析 HTML，不以白条鸡批发价冒充白羽肉鸡棚前价。
 
 ---
 
-### A1-2. 明确 `factor_value` 语义，减少 fallback 猜字段
+# 总体评价
 
-**问题**
+当前项目已经从“脚本型量化系统”升级成“小型因子平台”：
 
-`FactorRunner.extract_factor_value()` 当前靠字段列表猜因子值。
+- `FactorRunner` 已成为主要执行入口。
+- `ChainDefinition` 已统一 `chains.yaml` 与 registry 元信息。
+- `DataBus` 已集中加载和显式价格列语义。
+- `SignalAggregator` 已有透明输出、冲突度、driver 去重。
+- `report_formatter` 已抽出 API/推送共用格式。
+- `trigger_backtest`、`ICMonitor`、`DATA_CONTRACT_SPEC` 已补齐统计评估和数据口径文档。
+- 158 个测试通过，全链审计 0 errors。
 
-**风险**
+但重新审查后，仍有 4 个核心架构问题值得继续处理。
 
-IC 计算可能使用了展示字段，而不是适合统计评估的因子值。
+---
 
-**目标**
+# P0 — 必须优先处理
 
-每个因子主动声明自己的核心因子值。
+## P0-1. 统一 `/factor`、`/signal`、`/analyze` 的执行链路
 
-**建议 schema**
+### 问题
+
+当前三个 API 入口执行路径不一致：
+
+| API | 当前路径 | 问题 |
+|-----|----------|------|
+| `/analyze/<chain>` | `FactorRunner.run_chain()` | 标准路径 |
+| `/factor/<chain>` | route 内直接 `factor.calculate()` | 绕过 `normalize_factor_data()`、IC snapshot、统一错误处理 |
+| `/signal/<chain>` | route 内直接 `factor.signal()` | 没有先标准 calculate/cache，日志里 `factor_data=None` |
+
+相关位置：
+
+- `server.py` `/analyze/<chain>`：标准路径
+- `server.py` `/factor/<chain_name>`：手写 calculate
+- `server.py` `/signal/<chain_name>`：手写 signal
+- `core/factor_runner.py`：标准执行链
+
+### 风险
+
+- 同一个因子从不同 API 路径跑出来可能语义不一致。
+- `/factor` 返回的数据可能没有补齐 `factor_value/factor_value_type`。
+- `/signal` 记录的信号缺少完整 `factor_data_json`。
+- route 层仍然持有业务执行细节。
+
+### 目标
+
+所有外部 API 都走统一 runner/service，不在 route 里直接调用因子的 `calculate()` / `signal()`。
+
+### 建议实现
+
+在 `FactorRunner` 增加两个显式方法：
+
+```python
+def calculate_only(self, chain_name: str) -> dict:
+    ...  # instantiate → calculate → normalize_factor_data
+
+
+def signal_only(self, chain_name: str) -> dict:
+    ...  # calculate_only → set _cached_data → signal → log
+```
+
+然后修改：
+
+- `/factor/<chain_name>` 调用 `_runner.calculate_only(chain_name)`
+- `/signal/<chain_name>` 调用 `_runner.signal_only(chain_name)`
+- `/analyze/<chain>` 保持 `_runner.run_chain(chain)`
+
+### 验收标准
+
+- route 层不再直接调用 `factor.calculate()` / `factor.signal()`。
+- `/factor` 返回的 `factor_data` 必须经过 `normalize_factor_data()`。
+- `/signal` 记录日志时必须包含 `factor_data_json`。
+- 新增/更新测试覆盖三个 API 的一致性。
+
+---
+
+## P0-2. `factor_value` 从 fallback 猜字段升级为显式契约
+
+### 问题
+
+当前 `core/factor_runner.py` 仍然维护大列表：
+
+```python
+FACTOR_VALUE_KEYS = [...]
+```
+
+执行时如果因子没有显式 `factor_value`，系统会尝试从 `zscore/ratio/spread/current/...` 等字段猜。
+
+### 风险
+
+- IC / hit-rate 可能取到展示字段，而非核心统计因子值。
+- 新因子字段命名变化时，可能悄悄取错值。
+- fallback key 列表会持续膨胀，形成隐性事实来源。
+
+### 目标
+
+所有用于评估的因子必须显式声明：
 
 ```python
 {
-    "factor_value": 1.23,
-    "factor_value_type": "zscore | ratio | return | yoy | spread | percentile | score",
-    "factor_direction": "higher_better | lower_better | two_sided | regime",
-    "target_asset": "...",
-    "horizon_days": 5,
+  "factor_value": 1.23,
+  "factor_value_type": "zscore | ratio | return | yoy | spread | percentile | score | raw_value",
+  "factor_direction": "higher_better | lower_better | two_sided | regime",
+  "horizon_days": 5,
 }
 ```
 
-**验收标准**
+fallback 只作为短期兼容机制，不能作为长期默认。
 
-- 新增测试：所有用于 IC 的因子必须有 `factor_value`
-- fallback 只作为兼容警告，不作为长期默认
+### 建议实现
 
----
+第一步：审计增强
 
-### A1-3. SignalLogger 保存完整信号上下文
+- `normalize_factor_data()` 如果 fallback 命中，给结果加：
 
-**问题**
-
-当前信号表缺少 trigger、holding_days、stop_loss、完整 signal json、run_id 等字段。
-
-**目标**
-
-让每次信号都可以完整复盘。
-
-**建议新增字段**
-
-- `trigger`
-- `holding_days`
-- `stop_loss`
-- `signal_json`
-- `factor_data_json`
-- `run_id`
-- `chain_name`
-- `as_of`
-- `available_date`
-
-**验收标准**
-
-- 从数据库能还原某次推送的全部原始 signal
-- composite chain 的子信号能通过同一个 `run_id` 串起来
-
----
-
-### A1-4. 数据刷新写入改成原子写
-
-**问题**
-
-数据刷新如果直接覆盖 parquet，网络或接口异常时可能污染已有好数据。
-
-**目标**
-
-数据写入流程变成：
-
-```text
-fetch → validate → write tmp → read back check → atomic replace → invalidate cache
+```python
+"factor_value_source": "fallback:<key>"
 ```
 
-**验收标准**
+- 如果显式存在：
 
-- 空 DataFrame 不覆盖旧文件
-- 字段不满足最低要求不覆盖旧文件
-- 写 parquet 中途失败不会破坏旧数据
+```python
+"factor_value_source": "explicit"
+```
+
+第二步：`audit_chains.py` 将 fallback 命中列为 warning。
+
+第三步：逐个因子补显式 `factor_value` 和语义字段。
+
+最终：将 fallback warning 升级为 error。
+
+### 验收标准
+
+- 审计报告能列出所有 fallback 因子。
+- 新增测试：fallback 会产生 warning/source 标记。
+- 关键链条因子显式 `factor_value` 覆盖率达到 100%。
+- 后续新增因子若没有 `factor_value`，测试失败。
 
 ---
 
-### A1-5. DataBus 价格口径显式化
+# P1 — 高价值改进
 
-**问题**
+## P1-1. DataBus 显式价格列下沉到刷新文件层
 
-`DataBus` 当前自动做换月跳空调整，并把结果写回 `close`，同时保留 `close_raw`。
+### 问题
 
-**风险**
-
-下游因子不知道自己用的是 raw price 还是 adjusted price。
-
-**目标**
-
-明确价格字段：
+`DataBus` 运行时会补：
 
 - `close_raw`
 - `close_adj`
 - `return_raw`
 - `return_adj`
-- 默认 `close` 的含义要文档化
 
-**验收标准**
+但当前很多 parquet 原始文件仍是 legacy schema，仅含 `date/close/...`。
 
-- 每个因子能明确使用哪个价格口径
-- 技术类/回测收益类优先考虑 raw return
-- 估值位置类可以使用 adjusted price
+审计现象：
+
+```text
+price_schema ... legacy_close=21 explicit_price_columns=0
+```
+
+也就是说，显式价格列目前主要是 **运行时 schema**，不是 **文件层 schema**。
+
+### 风险
+
+- 如果有人绕过 DataBus 直接读 parquet，会拿到旧口径。
+- 文件数据口径和运行时口径不一致。
+- 数据刷新、回测、外部脚本之间容易产生隐性差异。
+
+### 目标
+
+刷新流程写出的 parquet 就包含显式列。
+
+### 建议实现
+
+新增公共函数，例如：
+
+```python
+def normalize_price_frame(df, dataset_name):
+    ...
+```
+
+职责：
+
+- 若是价格数据，写入 `close_raw/close_adj/return_raw/return_adj`。
+- 国内主力连续品种应用换月调整。
+- 非期货价格数据 `raw == adj`。
+- 写入 metadata 或 sidecar manifest。
+
+然后让：
+
+- `download_history.py`
+- `core/data_refresh.py`
+- `DataBus.get()`
+
+共享同一套标准化函数。
+
+### 验收标准
+
+- 刷新后 parquet 文件物理包含显式价格列。
+- `scripts/audit_chains.py` 中 `explicit_price_columns > 0` 且 legacy 数量下降。
+- `DataBus.get()` 对已显式列文件不重复/不冲突处理。
+- 新增测试：刷新保存后的 parquet 直接读也包含显式列。
 
 ---
 
-## A2. 中优先级代码任务
+## P1-2. Driver 去重从硬编码规则表迁到配置，并预留统计相关性接口
 
-### A2-1. 聚合器输出更透明
+### 问题
 
-**问题**
-
-当前聚合结果只有 components，缺少冲突度、相关性折扣、driver 分组。
-
-**建议**
-
-聚合输出增加：
+`SignalAggregator` 当前内置：
 
 ```python
-{
-    "driver_groups": {...},
-    "conflict_score": ...,
-    "dedup_applied": true,
-    "raw_signal_count": ...,
-    "effective_signal_count": ...,
+DRIVER_PATTERNS = {
+  "growth": ["pmi", "gdp", ...],
+  "inflation": ["cpi", "ppi", ...],
+  ...
 }
 ```
 
----
+这是可解释的第一版，但不是最终架构。
 
-### A2-2. 推送和 API 输出共用格式化层
+### 风险
 
-**问题**
+- trigger 命名变动会影响 driver 分类。
+- 业务配置被写死在代码中。
+- 两个 driver 名义不同但历史高度相关时，无法自动折扣。
+- 两个同 driver 信号也未必真的冗余。
 
-推送格式和 API 结果之间有重复解释逻辑。
+### 目标
 
-**建议**
+第一阶段：driver pattern 配置化。  
+第二阶段：预留基于历史相关性的折扣接口。
 
-新增：
+### 建议实现
 
-```text
-core/report_formatter.py
+配置迁移到 `config/factor_params.yaml`：
+
+```yaml
+driver_patterns:
+  growth:
+    - pmi
+    - gdp
+    - industrial
+  inflation:
+    - cpi
+    - ppi
+    - oil_
 ```
 
-统一负责：
+`SignalAggregator` 启动时加载配置。
 
-- signal 展示
-- percentile 展示
-- position label
-- direction summary
-
----
-
-### A2-3. 配置加载集中化
-
-**问题**
-
-`server.py`、`FactorRunner`、`data_refresh`、push 各自读不同配置。
-
-**建议**
-
-新增：
-
-```text
-core/settings.py
-```
-
-统一管理：
-
-- data_dir
-- chains config
-- factor params
-- push config
-- token/env 检查
-
----
-
-# B. 金融逻辑任务
-
-## B0. 当前最优先金融任务，但排在代码架构之后
-
-### B0-1. 做 trigger 级回测
-
-**问题**
-
-现在系统能生成信号，但还不知道每个 trigger 是否真的有效。
-
-**目标**
-
-每个 trigger 输出最小统计：
-
-- 触发次数
-- 未来 1/5/10/20 日收益
-- 胜率
-- 平均收益
-- 中位收益
-- 最大亏损
-- 分年度表现
-
-**建议文件**
-
-```text
-evaluation/trigger_backtest.py
-```
-
-**验收标准**
-
-- 能回答：哪个 trigger 有用，哪个 trigger 只是逻辑故事
-- 后续改阈值前先看 trigger 统计
-
----
-
-### B0-2. 统一 `signal_strength` 金融语义
-
-**问题**
-
-现在 `signal_strength` 混合了方向强度、统计偏离、风险状态、解释分数。
-
-**目标**
-
-拆成：
+同时预留接口：
 
 ```python
-factor_score          # 原始因子分
-trade_signal_strength # 与 BUY/SELL 方向一致的交易强度
-risk_modifier         # 只修正仓位，不表达方向
-confidence            # 证据可信度
+def compute_signal_correlation_discount(signals, history):
+    return discount_map
 ```
 
-**验收标准**
+当前先返回规则折扣，未来替换成历史相关矩阵。
 
-- HOLD 类型因子不再贡献方向强度
-- 均值回归类因子的 strength 与交易方向一致
-- 聚合器只使用 `trade_signal_strength`
+### 验收标准
 
----
-
-### B0-3. 所有宏观引用统一 as_of
-
-**问题**
-
-已知还有这些因子直接读取 PMI：
-
-- `factors/cross/pmi_metals.py`
-- `factors/metals/silver.py`
-- `factors/metals/metals.py`
-
-**目标**
-
-所有宏观数据引用统一经过 `available_asof()`。
-
-**验收标准**
-
-- grep 不再出现 cross/metals 因子直接 `self.load("pmi")` 后立即使用
-- 新增测试覆盖 cross 因子的宏观 as_of 过滤
+- `SignalAggregator` 不再硬编码 driver pattern。
+- 修改 config 后测试可验证 driver 分类变化。
+- driver 分类/折扣出现在聚合结果里。
+- 保留当前行为兼容。
 
 ---
 
-## B1. 高优先级金融任务
+# P2 — 中期优化
 
-### B1-1. 止损和持仓天数用波动率校准
+## P2-1. DataBus 单例改为可注入依赖，减少全局状态
 
-**问题**
+### 问题
 
-当前大量 signal 使用固定：
+`DataBus` 当前是强单例：
 
-- `stop_loss=-0.02`
-- `holding_days=5/10/20/30`
+```python
+if existing data_dir != new data_dir:
+    raise RuntimeError
+```
 
-**目标**
+因子内部：
 
-按品种波动率校准风险。
+```python
+self._bus = DataBus(data_dir)
+```
 
-**建议**
+### 风险
 
-- 引入 ATR 或 realized volatility
-- `stop_loss = -k * vol_20d * sqrt(holding_days)`
-- 区分信号失效和交易止损
+- 测试必须频繁 `DataBus.reset()`。
+- 多数据目录、多回测上下文不方便。
+- 长进程服务内刷新数据后缓存一致性需要额外小心。
+
+### 目标
+
+保留默认单例便利性，但允许显式注入。
+
+### 建议实现
+
+`BaseFactor` 支持：
+
+```python
+def __init__(..., data_bus=None):
+    self._bus = data_bus or DataBus(data_dir)
+```
+
+`FactorRunner` 创建因子时传入自身持有的 `_data_bus`。
+
+### 验收标准
+
+- 测试可用独立 DataBus 实例，不依赖全局 reset。
+- 现有因子不改调用方式也能运行。
+- `DataBus.reset()` 使用场景减少。
 
 ---
 
-### B1-2. 商品期货主力连续口径校准
+## P2-2. app 初始化封装成 `create_app()`
 
-**问题**
+### 问题
 
-当前自动换月跳空调整可能误判真实跳空，也可能影响动量/波动率。
+`server.py` import 时直接创建全局对象：
 
-**目标**
+- Flask app
+- DataBus
+- SignalLogger
+- ICMonitor
+- FactorRunner
+- scheduler/push 初始化相关对象
 
-建立数据口径表，明确每个品种：
+### 风险
 
-- 数据来源
-- 是否主力连续
-- 是否复权/换月调整
-- 是否有夜盘
-- 可交易时间
-- contract code 是否保存
+- import 副作用大。
+- API 测试不易注入临时配置。
+- 未来想 CLI 复用或多实例运行不方便。
 
-**建议文件**
+### 目标
+
+轻量 app factory，不做复杂多环境系统。
+
+### 建议实现
+
+```python
+def create_app(settings=None):
+    app = Flask(__name__)
+    services = build_services(settings)
+    register_routes(app, services)
+    return app
+
+app = create_app()
+```
+
+### 验收标准
+
+- import `server` 不触发数据刷新/调度器副作用。
+- 测试可以传入临时 data_dir/db_path。
+- 现有启动命令兼容。
+
+---
+
+## P2-3. `download_history.py` 继续拆分数据源适配器
+
+### 问题
+
+`download_history.py` 约 485 行，包含：
+
+- Tushare 国内期货
+- AKShare 外盘
+- FRED/EIA/央行数据
+- 保存逻辑
+- 数据缺口说明
+
+### 风险
+
+- 单文件过长，新增数据源容易继续堆积。
+- 多个数据源错误处理风格不一致。
+- API-only 原则容易被后来维护者破坏。
+
+### 目标
+
+拆成数据源 adapter，同时保留现有命令入口。
+
+### 建议结构
 
 ```text
-docs/DATA_CONTRACT_SPEC.md
+data_sources/
+  domestic_futures.py
+  foreign_futures.py
+  macro_china.py
+  macro_us.py
+  eia.py
+  known_missing.py
 ```
 
----
+`download_history.py` 只做 orchestration。
 
-### B1-3. 聚合器引入 driver 去重
+### 验收标准
 
-**问题**
-
-多个信号可能来自同一个宏观驱动，不能当成独立证据。
-
-**建议 driver**
-
-- `growth`
-- `inflation`
-- `real_rate`
-- `fx`
-- `risk_off`
-- `inventory`
-- `cost`
-- `seasonality`
-- `technical`
-
-**验收标准**
-
-- 同 driver 多信号触发时做折扣
-- 跨 driver 信号一致时才提高置信度
+- 每个 adapter 可独立测试。
+- 禁止 HTML scraping 的原则写进 known_missing / tests。
+- 原有下载命令不变。
 
 ---
 
-### B1-4. 固定阈值改为分位 / z-score
+# 明确不建议现在做的事
 
-**问题**
+以下不是当前瓶颈，不建议为了“架构好看”马上做：
 
-社融、M2、CPI、VIX、油价涨跌等固定阈值容易 regime drift。
-
-**目标**
-
-逐步从固定阈值迁移到：
-
-- rolling percentile
-- rolling z-score
-- regime relative threshold
+1. 把 Flask route 拆成很多蓝图文件，但不改变执行语义。
+2. 引入复杂 DI 框架。
+3. 引入消息队列/任务队列。
+4. 把个人项目强行改成多环境企业工程。
+5. 在没有历史统计证据时继续拍脑袋改交易规则。
 
 ---
 
-## B2. 中优先级金融任务
+# 推荐执行顺序
 
-### B2-1. 宏观传导加入 regime filter
+## 第一批：执行一致性
 
-**问题**
+1. P0-1：统一 `/factor`、`/signal`、`/analyze` 执行链路
+2. P0-2：factor_value 显式契约 + fallback warning
 
-当前很多传导是线性的：
+## 第二批：数据口径下沉
 
-- 油涨 → 黄金 BUY
-- 人民币贬值 → 商品 BUY
-- PMI 上行 → 铜 BUY
-- 社融上行 → A股 BUY
+3. P1-1：DataBus 显式价格列落盘
 
-**建议加入 regime**
+## 第三批：聚合配置化
 
-- growth regime
-- inflation regime
-- liquidity regime
-- dollar regime
-- risk sentiment
-- inventory regime
+4. P1-2：driver pattern 迁移到 config
 
----
+## 第四批：长期维护
 
-### B2-2. IC 评估按因子类型拆分
-
-**问题**
-
-时间序列单资产因子、宏观因子、截面因子不应该都用同一种 IC 解释。
-
-**建议**
-
-拆成：
-
-- time-series IC
-- trigger return stats
-- direction hit rate
-- cross-sectional IC
+5. P2-1：DataBus 可注入
+6. P2-2：create_app
+7. P2-3：download_history 数据源 adapter 拆分
 
 ---
 
-# C. 建议执行顺序
+# 当前任务总览
 
-## 第一批：先解决依赖不清晰和重复维护
-
-1. A0-1 消除 `FACTOR_IMPORTS` 手写列表
-2. A0-2 统一 `chains.yaml` / `FactorRegistry` / `FactorRunner` 关系
-3. A0-3 建立全链条 schema 检查脚本
-
-## 第二批：继续瘦身服务层
-
-4. A1-1 拆分 `server.py` 剩余业务逻辑
-5. A1-3 SignalLogger 保存完整上下文
-6. A1-4 数据刷新原子写
-
-## 第三批：金融验证前置
-
-7. B0-3 统一所有宏观 as_of
-8. B0-1 trigger 级回测
-9. B0-2 重定义 signal_strength 语义
-
-## 第四批：金融参数校准
-
-10. B1-1 波动率止损
-11. B1-3 driver 去重
-12. B1-4 阈值分位化
+| 优先级 | 编号 | 任务 | 状态 |
+|--------|------|------|------|
+| P0 | P0-1 | 统一 API 执行链路 | TODO |
+| P0 | P0-2 | factor_value 显式契约 | TODO |
+| P1 | P1-1 | 显式价格列下沉到 parquet | TODO |
+| P1 | P1-2 | driver pattern 配置化 + 相关性接口 | TODO |
+| P2 | P2-1 | DataBus 可注入依赖 | TODO |
+| P2 | P2-2 | create_app app factory | TODO |
+| P2 | P2-3 | download_history adapter 拆分 | TODO |
 
 ---
 
-# D. 下一步建议立即做的具体代码任务
+# 验收总标准
 
-我建议下一步直接做这三个，风险低、收益高：
+每完成一项任务必须：
 
-1. 从 `chains.yaml` 自动 import factor modules，废弃 `FACTOR_IMPORTS`。
-2. 新增 `tests/test_chain_integrity.py`，检查所有链条能 import / instantiate。
-3. 新增 `scripts/audit_chains.py`，输出链条、注册表、data_deps、schema 缺口报告。
+1. 新增或更新测试。
+2. 跑完整回归：
 
-这三个做完后，项目依赖关系会清楚很多，后面再拆 `server.py` 和改金融逻辑会稳得多。
+```bash
+quantenv/bin/python3 -m unittest discover -s tests -q
+```
+
+3. 跑链条审计：
+
+```bash
+quantenv/bin/python3 scripts/audit_chains.py
+```
+
+4. commit 说明必须写清楚：
+   - 改了什么
+   - 为什么改
+   - 验证结果
+   - 向后兼容性
+
+---
+
+# 最终评价
+
+这个项目当前最大问题不是“代码乱”，而是：
+
+> **几个关键事实来源还没有完全统一。**
+
+具体就是：
+
+- API 执行事实来源还没完全统一到 `FactorRunner`。
+- 因子评估值事实来源还没完全统一到显式 `factor_value`。
+- 价格口径事实来源还没完全统一到 parquet 文件层。
+- driver 分类事实来源还没完全统一到 config/统计数据。
+
+把这四件事处理完，项目架构会明显再上一个台阶。
