@@ -24,6 +24,7 @@ PMI→金属传导因子 — 影响链条
 from typing import Optional, Dict, Any
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
+from core.macro_calendar import available_asof
 
 
 @FactorRegistry.register(
@@ -40,7 +41,7 @@ class PMIMetalsLink(BaseFactor):
             "aluminum_price": None, "aluminum_change_20d": None,
         }
 
-        pmi_df = self.load("pmi")
+        pmi_df = available_asof(self.load("pmi"), "pmi")
         copper_df = self.load("copper_futures")
         aluminum_df = self.load("aluminum_futures")
 

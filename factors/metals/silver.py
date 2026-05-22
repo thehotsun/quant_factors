@@ -30,6 +30,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from factors.base import BaseFactor
 from core.factor_registry import FactorRegistry
+from core.macro_calendar import available_asof
 
 
 @FactorRegistry.register(
@@ -97,7 +98,7 @@ class SilverFactor(BaseFactor):
                         self._zscore(result["gold_silver_ratio"], ratio_series), 2
                     )
 
-        pmi_df = self.load("pmi")
+        pmi_df = available_asof(self.load("pmi"), "pmi")
         if pmi_df is not None and len(pmi_df) >= 2:
             col = 'value' if 'value' in pmi_df.columns else 'pmi'
             if col in pmi_df.columns:
