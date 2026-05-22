@@ -94,21 +94,46 @@ class SocialFinancingFactor(BaseFactor):
 
         sf_mom = result.get("sf_momentum")
         if sf_g is not None:
-            if sf_g > 12 and (sf_mom is not None and sf_mom > 0):
-                result["sf_trend"] = "社融高速扩张→经济强复苏→利好A股"
-                result["signal"] = "strong_buy"
-            elif sf_g > 10:
-                result["sf_trend"] = "社融稳健增长→经济温和复苏→偏多A股"
-                result["signal"] = "buy"
-            elif sf_g < 8 and (sf_mom is not None and sf_mom < 0):
-                result["sf_trend"] = "社融收缩→经济下行压力→利空A股"
-                result["signal"] = "sell"
-            elif sf_g < 8:
-                result["sf_trend"] = "社融偏弱→经济动能不足→偏空A股"
-                result["signal"] = "weak_sell"
-            else:
-                result["sf_trend"] = "社融平稳→经济正常→中性"
-                result["signal"] = "neutral"
+            # Compute historical growth series for percentile-based signals
+            sf_raw = self.load("social_financing")
+            if sf_raw is not None:
+                col_raw = self._find_value_column(sf_raw, ["社融规模增量", "社会融资规模增量", "value"])
+                if col_raw:
+                    hist_growth = self._compute_historical_growth(sf_raw, col_raw)
+                    if len(hist_growth) >= 10:
+                        pct = self._rolling_percentile(sf_g, hist_growth, window=len(hist_growth))
+                        result["sf_growth_percentile"] = round(pct, 1)
+                        # Percentile-based signal classification
+                        if pct >= 80:
+                            result["sf_trend"] = f"社融增速{sf_g}%处于历史{pct:.0f}%分位（高位）→利好A股"
+                            result["signal"] = "strong_buy" if sf_mom and sf_mom > 0 else "buy"
+                        elif pct >= 50:
+                            result["sf_trend"] = f"社融增速{sf_g}%处于历史{pct:.0f}%分位（中高位）→偏多A股"
+                            result["signal"] = "buy"
+                        elif pct >= 20:
+                            result["sf_trend"] = f"社融增速{sf_g}%处于历史{pct:.0f}%分位（中低位）→偏空A股"
+                            result["signal"] = "weak_sell"
+                        else:
+                            result["sf_trend"] = f"社融增速{sf_g}%处于历史{pct:.0f}%分位（低位）→利空A股"
+                            result["signal"] = "sell" if sf_mom and sf_mom < 0 else "weak_sell"
+                    else:
+                        # Fallback to fixed thresholds if insufficient history
+                        result["_threshold_mode"] = "fixed"
+                        if sf_g > 12 and (sf_mom is not None and sf_mom > 0):
+                            result["sf_trend"] = "社融高速扩张→经济强复苏→利好A股"
+                            result["signal"] = "strong_buy"
+                        elif sf_g > 10:
+                            result["sf_trend"] = "社融稳健增长→经济温和复苏→偏多A股"
+                            result["signal"] = "buy"
+                        elif sf_g < 8 and (sf_mom is not None and sf_mom < 0):
+                            result["sf_trend"] = "社融收缩→经济下行压力→利空A股"
+                            result["signal"] = "sell"
+                        elif sf_g < 8:
+                            result["sf_trend"] = "社融偏弱→经济动能不足→偏空A股"
+                            result["signal"] = "weak_sell"
+                        else:
+                            result["sf_trend"] = "社融平稳→经济正常→中性"
+                            result["signal"] = "neutral"
 
         spread = result.get("m2_sf_spread")
         if spread is not None:
@@ -183,3 +208,13 @@ class SocialFinancingFactor(BaseFactor):
             if "社融" in c or "增量" in c or "M2" in c or "m2" in c:
                 return c
         return None
+
+    def _compute_historical_growth(self, sf_df: pd.DataFrame, col: str) -> pd.Series:
+        """Compute historical YoY 3-month average growth series from raw social financing data."""
+        series = sf_df[col].astype(float)
+        if len(series) < 13:
+            return pd.Series(dtype=float)
+        ma3 = series.rolling(3).mean()
+        prev_year = ma3.shift(12)
+        growth = ((ma3 / prev_year) - 1) * 100
+        return growth.dropna()
