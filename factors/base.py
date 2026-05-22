@@ -140,6 +140,38 @@ class BaseFactor(ABC):
         rs = avg_gain / avg_loss
         return float(100.0 - 100.0 / (1.0 + rs))
 
+    def _realized_vol(self, df: pd.DataFrame, col: str = 'close', window: int = 20) -> Optional[float]:
+        """Compute annualized realized volatility from daily returns."""
+        try:
+            series = df[col].astype(float).tail(window + 1)
+            if len(series) < 3:
+                return None
+            daily_vol = series.pct_change().dropna().std()
+            if np.isnan(daily_vol) or daily_vol == 0:
+                return None
+            return float(daily_vol * np.sqrt(252))
+        except Exception:
+            return None
+
+    def _volatility_stop(self, df: pd.DataFrame, holding_days: int = 5,
+                         col: str = 'close', window: int = 20, k: float = 2.0) -> Optional[float]:
+        """Compute volatility-calibrated stop-loss.
+
+        Formula: stop_loss = -k * realized_vol_daily * sqrt(holding_days)
+        Capped at -15% to avoid extreme values on very volatile assets.
+        """
+        try:
+            series = df[col].astype(float).tail(window + 1)
+            if len(series) < 3:
+                return None
+            daily_vol = series.pct_change().dropna().std()
+            if np.isnan(daily_vol) or daily_vol == 0:
+                return None
+            stop = -k * daily_vol * np.sqrt(holding_days)
+            return max(-0.15, round(float(stop), 4))
+        except Exception:
+            return None
+
     def _continuous_signal(self, zscore: Optional[float], percentile: Optional[float] = None,
                            change: Optional[float] = None, change_is_cost: bool = True) -> float:
         """将统计量映射为连续信号强度 (-1.0 ~ +1.0)
@@ -180,6 +212,7 @@ class BaseFactor(ABC):
                      factor_value_type: str = None, factor_direction: str = None,
                      horizon_days: int = None,
                      factor_score: float = None, risk_modifier: float = None,
+                     price_df=None,
                      **kwargs) -> Dict[str, Any]:
         raw_strength = strength if strength is not None else (0.5 if direction == "BUY" else -0.5)
         try:
@@ -205,6 +238,12 @@ class BaseFactor(ABC):
         meta = kwargs.pop("meta", {}) or {}
         trigger = kwargs.get("trigger")
         factor_value = kwargs.pop("factor_value", None)
+
+        # Volatility-calibrated stop: if price_df provided, compute from realized vol
+        if price_df is not None:
+            vol_stop = self._volatility_stop(price_df, holding_days=holding_days)
+            if vol_stop is not None:
+                stop_loss = vol_stop
 
         signal = {
             "asset": asset,
