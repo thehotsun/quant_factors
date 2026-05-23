@@ -24,6 +24,9 @@ from core.chain_config import build_chain_definitions, check_metadata_consistenc
 REQUIRED_SIGNAL_KEYS = {"asset", "direction", "strength", "signal_strength", "reason", "confidence", "trigger", "meta"}
 KNOWN_MISSING_DATA_DEPS = {
     "pig_chicken_spread": {"chicken_spot"},
+    "pork_stock_signal": {"pork_spot", "breeding_etf"},
+    "gold_etf_signal": {"gold_etf"},
+    "oil_stock_signal": {"petrochina_stock"},
 }
 
 

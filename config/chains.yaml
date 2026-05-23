@@ -639,6 +639,106 @@ chains:
       - forex_commodity
       - pmi_metals
 
+  # ==================== 混合信号链 ====================
+  pork_stock_signal:
+    category: mixed
+    description: 生猪现货+期货+饲料成本 → 养殖ETF买入信号
+    factor_module: factors.mixed.pork_stock_signal
+    factor_class: PorkStockSignal
+    asset: 养殖ETF(159865)
+    trade_asset: 养殖ETF(159865)
+    trade_asset_type: etf
+    execution_asset: '159865'
+    signal_target: breeding_profit
+    drivers:
+      futures:
+        - pork_futures
+        - corn_futures
+        - soybean_meal_futures
+      spot:
+        - pork_spot
+      equity:
+        - breeding_etf
+    data_deps:
+      - pork_futures
+      - corn_futures
+      - soybean_meal_futures
+      - pork_spot
+      - breeding_etf
+
+  gold_etf_signal:
+    category: mixed
+    description: 黄金期货+实际利率+汇率 → 黄金ETF信号
+    factor_module: factors.mixed.commodity_to_equity
+    factor_class: CommodityToEquitySignal
+    asset: 黄金ETF(518880)
+    trade_asset: 黄金ETF(518880)
+    trade_asset_type: etf
+    execution_asset: '518880'
+    signal_target: gold_trade
+    drivers:
+      futures:
+        - gold_futures
+        - crude_oil_futures
+      macro:
+        - usd_cny
+        - tips_yield
+      equity:
+        - gold_etf
+    data_deps:
+      - gold_futures
+      - crude_oil_futures
+      - usd_cny
+      - tips_yield
+    params:
+      primary_commodity: gold_futures
+      valuation_metric: zscore
+      valuation_window: 250
+      momentum_window: 20
+      buy_threshold: -1.5
+      sell_threshold: 1.5
+    data_deps:
+      - gold_futures
+      - crude_oil_futures
+      - usd_cny
+      - tips_yield
+      - gold_etf
+
+  oil_stock_signal:
+    category: mixed
+    description: 原油期货+EIA库存 → 中国石油/能源ETF信号
+    factor_module: factors.mixed.commodity_to_equity
+    factor_class: CommodityToEquitySignal
+    asset: 中国石油(601857)
+    trade_asset: 中国石油(601857)
+    trade_asset_type: stock
+    execution_asset: '601857'
+    signal_target: oil_equity
+    drivers:
+      futures:
+        - crude_oil_futures
+        - brent_oil
+      macro:
+        - eia_crude_stock
+      equity:
+        - petrochina_stock
+    data_deps:
+      - crude_oil_futures
+      - brent_oil
+      - eia_crude_stock
+    params:
+      primary_commodity: crude_oil_futures
+      valuation_metric: zscore
+      valuation_window: 250
+      momentum_window: 20
+      buy_threshold: -1.5
+      sell_threshold: 1.5
+    data_deps:
+      - crude_oil_futures
+      - brent_oil
+      - eia_crude_stock
+      - petrochina_stock
+
   # ==================== 技术因子 ====================
   momentum:
     category: technical

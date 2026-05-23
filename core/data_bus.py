@@ -177,6 +177,74 @@ class DataBus:
         for name in names:
             self.get(name)
 
+    def get_price(self, name: str, mode: str = "default") -> Optional[pd.Series]:
+        """Get a specific price column by mode.
+
+        Modes:
+        - default: backward-compatible close (= close_adj)
+        - raw: close_raw (original unadjusted)
+        - adjusted: close_adj (roll-gap adjusted for futures, = raw for spot/equity)
+        - return_raw: daily return from close_raw
+        - return_adj: daily return from close_adj
+        """
+        df = self.get(name)
+        if df is None:
+            return None
+        mode_map = {
+            "default": "close",
+            "raw": "close_raw",
+            "adjusted": "close_adj",
+            "return_raw": "return_raw",
+            "return_adj": "return_adj",
+        }
+        col = mode_map.get(mode)
+        if col is None:
+            raise ValueError(f"Invalid price mode '{mode}'. Allowed: {list(mode_map.keys())}")
+        if col not in df.columns:
+            # Fallback: default/raw/adjusted all point to close if explicit columns missing
+            if mode in ("default", "raw", "adjusted") and "close" in df.columns:
+                return df["close"]
+            return None
+        return df[col]
+
+    def get_driver_bundle(self, chain_def) -> Dict[str, Dict[str, Optional[pd.DataFrame]]]:
+        """Load all driver datasets for a chain, grouped by type.
+
+        Returns:
+            {"futures": {"pork_futures": df, ...}, "spot": {...}, ...}
+        Missing datasets are included as None.
+        """
+        drivers = getattr(chain_def, "drivers", {}) or {}
+        bundle: Dict[str, Dict[str, Optional[pd.DataFrame]]] = {}
+        for group, deps in drivers.items():
+            group_data: Dict[str, Optional[pd.DataFrame]] = {}
+            for dep_name in (deps if isinstance(deps, list) else []):
+                group_data[dep_name] = self.get(dep_name)
+            bundle[group] = group_data
+        return bundle
+
+    def get_driver_status(self, chain_def) -> Dict[str, Dict[str, str]]:
+        """Check driver availability without loading full DataFrames.
+
+        Returns:
+            {"futures": {"pork_futures": "ok", "x": "missing_known"}, ...}
+        """
+        from core.price_schema import KNOWN_MISSING_PRICE_DATA
+        drivers = getattr(chain_def, "drivers", {}) or {}
+        status: Dict[str, Dict[str, str]] = {}
+        for group, deps in drivers.items():
+            group_status: Dict[str, str] = {}
+            for dep_name in (deps if isinstance(deps, list) else []):
+                path = self._data_dir / f"{dep_name}.parquet"
+                if path.exists():
+                    group_status[dep_name] = "ok"
+                elif dep_name in KNOWN_MISSING_PRICE_DATA:
+                    group_status[dep_name] = "missing_known"
+                else:
+                    group_status[dep_name] = "missing_unexpected"
+            status[group] = group_status
+        return status
+
     @property
     def cache_stats(self) -> Dict[str, int]:
         return {k: len(v) for k, v in self._cache.items()}

@@ -36,7 +36,7 @@ class MixedChainSchemaTest(unittest.TestCase):
                 "data_deps": [],
             }
         }
-        self.assertEqual(collect_price_dependencies(chains), ["chicken_spot", "pork_futures"])
+        self.assertEqual(collect_price_dependencies(chains), ["breeding_etf", "chicken_spot", "pork_futures"])
 
 
 if __name__ == "__main__":

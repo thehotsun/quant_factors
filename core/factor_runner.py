@@ -159,16 +159,26 @@ class FactorRunner:
             mod = importlib.import_module(module_path)
             cls = getattr(mod, class_name)
             factor_cfg = self.factor_params.get(chain_name, {})
+            # Merge: chain-level params as default, factor_params.yaml overrides
+            chain_params = {}
+            if cfg:
+                chain_params = dict(cfg.get("params", {}) or {})
+            merged_params = {**chain_params, **factor_cfg.get("params", {})}
             kwargs = {
                 "data_dir": str(self.data_dir),
                 "adaptive": factor_cfg.get("adaptive", True),
-                "params": factor_cfg.get("params", {}),
+                "params": merged_params,
                 "data_bus": self._data_bus,
             }
             if symbol:
                 kwargs["symbol"] = symbol
             if far_symbol:
                 kwargs["far_symbol"] = far_symbol
+            # Inject chain_def for mixed factors that accept it
+            import inspect
+            sig = inspect.signature(cls.__init__)
+            if "chain_def" in sig.parameters:
+                kwargs["chain_def"] = chain_def
             return cls(**kwargs)
         except Exception as e:
             logger.warning("实例化因子 %s 失败: %s", chain_name, e)
