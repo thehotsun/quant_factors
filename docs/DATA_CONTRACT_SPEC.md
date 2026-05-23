@@ -6,6 +6,21 @@
 
 ---
 
+## 零、混合信号链条口径（现货 + 期货 + 股票/ETF）
+
+系统现在把“交易标的”和“驱动数据”显式拆开：
+
+- `trade_asset`：最终要交易或关注的标的，例如 `养殖ETF(159865)`、鸡肉概念股篮子、某个期货品种。
+- `drivers.futures`：期货/连续合约驱动，例如 `pork_futures`。
+- `drivers.spot`：现货驱动，例如 `chicken_spot`。现货不做换月跳空调整，`close_raw == close_adj == close`。
+- `drivers.equity`：股票、ETF 或权益篮子驱动，用于表达交易资产或权益市场确认信号。
+- `data_deps`：兼容旧版因子执行与审计的依赖列表；新增/迁移链条时应与 `drivers` 保持一致。
+
+`DataBus` 元数据会为数据集附加 `data_kind`：`futures` / `spot` / `equity` / `macro` / `unknown`。
+其中 `data_kind=spot` 的价格数据只补齐显式价格列，不参与期货换月调整。
+
+---
+
 ## 一、国内期货（Tushare 主力连续）
 
 通过 `Tushare` 的 `fut_daily()` 接口获取主力合约日线数据。

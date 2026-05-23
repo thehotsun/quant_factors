@@ -12,6 +12,11 @@ class ChainDefinitionTest(unittest.TestCase):
         self.assertEqual(d.name, "test")
         self.assertFalse(d.is_composite)
         self.assertFalse(d.has_factor)
+        self.assertEqual(d.trade_asset, "")
+        self.assertEqual(d.trade_asset_type, "")
+        self.assertEqual(d.execution_asset, "")
+        self.assertEqual(d.signal_target, "")
+        self.assertEqual(d.drivers, {})
 
     def test_composite_detection(self):
         d = ChainDefinition(name="full", category="composite", sub_chains=("a", "b"))
@@ -34,7 +39,12 @@ class BuildChainDefinitionsTest(unittest.TestCase):
                 "category": "meat",
                 "description": "desc",
                 "asset": "ETF",
+                "trade_asset": "养殖ETF(159865)",
+                "trade_asset_type": "etf",
+                "execution_asset": "159865",
+                "signal_target": "breeding_profit",
                 "data_deps": ["pork_futures"],
+                "drivers": {"futures": ["pork_futures"], "spot": ["pork_spot"]},
                 "factor_module": "factors.meat.pork",
                 "factor_class": "PorkFactor",
             }
@@ -44,6 +54,11 @@ class BuildChainDefinitionsTest(unittest.TestCase):
         d = defs["pork_etf"]
         self.assertEqual(d.category, "meat")
         self.assertEqual(d.data_deps, ("pork_futures",))
+        self.assertEqual(d.trade_asset, "养殖ETF(159865)")
+        self.assertEqual(d.trade_asset_type, "etf")
+        self.assertEqual(d.execution_asset, "159865")
+        self.assertEqual(d.signal_target, "breeding_profit")
+        self.assertEqual(d.drivers["futures"], ["pork_futures"])
         self.assertTrue(d.has_factor)
 
     def test_registry_fills_missing_metadata(self):

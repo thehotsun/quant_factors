@@ -23,7 +23,12 @@ class ChainDefinition:
     category: str = ""
     description: str = ""
     asset: str = ""
+    trade_asset: str = ""
+    trade_asset_type: str = ""  # etf / stock / futures / basket / index / ""
+    execution_asset: str = ""  # real tradeable ticker, e.g. "159865"
+    signal_target: str = ""    # semantic target, e.g. "breeding_profit"
     data_deps: tuple = ()
+    drivers: dict = field(default_factory=dict)
     factor_module: str = ""
     factor_class: str = ""
     symbol: str = ""
@@ -65,7 +70,12 @@ def build_chain_definitions(
             category=merged.get("category", ""),
             description=merged.get("description", ""),
             asset=merged.get("asset", ""),
+            trade_asset=merged.get("trade_asset", merged.get("asset", "")),
+            trade_asset_type=merged.get("trade_asset_type", ""),
+            execution_asset=merged.get("execution_asset", ""),
+            signal_target=merged.get("signal_target", ""),
             data_deps=tuple(merged.get("data_deps", []) or []),
+            drivers=dict(merged.get("drivers", {}) or {}),
             factor_module=merged.get("factor_module", ""),
             factor_class=merged.get("factor_class", ""),
             symbol=merged.get("symbol", ""),

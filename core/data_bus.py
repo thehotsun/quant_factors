@@ -4,7 +4,7 @@ import logging
 import threading
 import pandas as pd
 
-from core.price_schema import is_price_like
+from core.price_schema import get_data_kind, is_price_like
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,7 @@ class DataBus:
     def _attach_metadata(df: pd.DataFrame, name: str, path: Path, adjusted: bool = False) -> pd.DataFrame:
         """Attach observational metadata without changing factor-facing columns."""
         result = df.copy()
+        data_kind = get_data_kind(name)
         is_price = is_price_like(name) and 'date' in result.columns and 'close' in result.columns
         explicit_columns = sorted({'close_raw', 'close_adj', 'return_raw', 'return_adj'} & set(result.columns))
         metadata: Dict[str, Any] = {
@@ -104,12 +105,14 @@ class DataBus:
             "rows": int(len(result)),
             "columns": list(result.columns),
             "is_price_data": bool(is_price),
+            "data_kind": data_kind,
         }
         if is_price:
             metadata.update({
                 "price_mode": "explicit_price_columns" if explicit_columns else "legacy_close",
                 "explicit_price_columns": explicit_columns,
                 "adjustment": "roll_gap_adjusted" if adjusted else "raw",
+                "price_role": data_kind,
             })
         if result.attrs.get("roll_gap_adjustment"):
             metadata["roll_gap_adjustment"] = result.attrs["roll_gap_adjustment"]

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from core.price_schema import collect_price_dependencies, inspect_price_dependencies
+from core.price_schema import collect_price_dependencies, get_data_kind, inspect_price_dependencies
 
 
 class PriceSchemaTest(unittest.TestCase):
@@ -13,9 +13,10 @@ class PriceSchemaTest(unittest.TestCase):
             "momentum": {"data_deps": ["pork_futures", "cpi"]},
             "volatility_copper": {"data_deps": ["copper_futures"]},
             "macro": {"data_deps": ["cpi"]},
+            "mixed": {"drivers": {"spot": ["chicken_spot"], "futures": ["pork_futures"]}},
         }
         deps = collect_price_dependencies(chains)
-        self.assertEqual(deps, ["copper_futures", "pork_futures"])
+        self.assertEqual(deps, ["chicken_spot", "copper_futures", "pork_futures"])
 
     def test_inspect_price_dependencies_reports_legacy_close(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -39,6 +40,12 @@ class PriceSchemaTest(unittest.TestCase):
             self.assertEqual(items["copper_futures"]["schema"], "explicit_price_columns")
             self.assertFalse(items["chicken_spot"]["exists"])
             self.assertEqual(items["chicken_spot"]["schema"], "known_missing")
+            self.assertEqual(items["chicken_spot"]["data_kind"], "spot")
+
+    def test_get_data_kind_by_mapping_and_suffix(self):
+        self.assertEqual(get_data_kind("pork_futures"), "futures")
+        self.assertEqual(get_data_kind("chicken_spot"), "spot")
+        self.assertEqual(get_data_kind("breeding_etf"), "equity")
 
 
 if __name__ == "__main__":

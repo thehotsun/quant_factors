@@ -33,6 +33,8 @@ class DataBusMetadataTest(unittest.TestCase):
             self.assertEqual(meta["dataset"], "brent_oil")
             self.assertTrue(meta["is_price_data"])
             self.assertEqual(meta["price_mode"], "explicit_price_columns")
+            self.assertEqual(meta["data_kind"], "futures")
+            self.assertEqual(meta["price_role"], "futures")
             self.assertEqual(meta["adjustment"], "raw")
             self.assertEqual(meta["rows"], 2)
             self.assertTrue(meta["source_file"].endswith("brent_oil.parquet"))
@@ -54,7 +56,21 @@ class DataBusMetadataTest(unittest.TestCase):
             self.assertEqual(meta["adjustment"], "roll_gap_adjusted")
             self.assertEqual(meta["price_mode"], "explicit_price_columns")
             self.assertIn("close_raw", meta["explicit_price_columns"])
+            self.assertEqual(meta["data_kind"], "futures")
             self.assertGreaterEqual(meta["roll_gap_adjustment"]["roll_count"], 1)
+
+    def test_spot_metadata_no_roll_adjustment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            df = pd.DataFrame({"date": pd.date_range("2024-01-01", periods=2), "close": [10.0, 10.5]})
+            _write(df, tmp, "chicken_spot")
+
+            bus = DataBus(tmp)
+            result = bus.get("chicken_spot")
+            self.assertEqual(result["close_raw"].tolist(), result["close_adj"].tolist())
+            meta = bus.get_metadata("chicken_spot")
+            self.assertEqual(meta["data_kind"], "spot")
+            self.assertEqual(meta["price_role"], "spot")
+            self.assertEqual(meta["adjustment"], "raw")
 
     def test_get_metadata_returns_none_for_missing_dataset(self):
         with tempfile.TemporaryDirectory() as tmp:

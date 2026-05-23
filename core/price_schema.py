@@ -21,6 +21,54 @@ PRICE_DATA_NAMES = {
     "vix", "chicken_spot",
 }
 KNOWN_MISSING_PRICE_DATA = {"chicken_spot"}
+
+# Dataset kind is intentionally separate from price schema:
+# - futures: tradeable futures/continuous contracts; Chinese futures may receive roll-gap adjustment.
+# - spot: cash/physical spot prices; no roll-gap adjustment, close_raw == close_adj.
+# - equity: stocks/ETFs/index-like trade assets; no futures roll adjustment.
+# - macro: non-tradeable macro observations, usually not OHLC price data.
+DATASET_KINDS = {
+    "pork_futures": "futures", "pork_futures_far": "futures", "egg_futures": "futures",
+    "soybean_meal_futures": "futures", "corn_futures": "futures",
+    "soybean_domestic_futures": "futures", "soybean_import_futures": "futures",
+    "rapeseed_meal_futures": "futures", "soybean_oil_futures": "futures",
+    "crude_oil_futures": "futures", "thermal_coal_futures": "futures",
+    "copper_futures": "futures", "aluminum_futures": "futures", "rebar_futures": "futures",
+    "gold_futures": "futures", "silver_futures": "futures", "iron_ore_futures": "futures",
+    "natural_gas_futures": "futures", "brent_oil": "futures", "cbot_soybean": "futures",
+    "chicken_spot": "spot",
+    "vix": "macro",
+}
+
+
+def get_data_kind(dataset_name: str) -> str:
+    if dataset_name in DATASET_KINDS:
+        return DATASET_KINDS[dataset_name]
+    if dataset_name.endswith("_spot"):
+        return "spot"
+    if dataset_name.endswith("_futures") or dataset_name.endswith("_futures_far"):
+        return "futures"
+    if dataset_name.endswith("_etf") or dataset_name.endswith("_stock") or dataset_name.endswith("_equity"):
+        return "equity"
+    return "unknown"
+
+
+def flatten_driver_dependencies(drivers: Dict[str, Any]) -> List[str]:
+    deps: List[str] = []
+    if not isinstance(drivers, dict):
+        return deps
+    for group in drivers.values():
+        if isinstance(group, list):
+            deps.extend(str(item) for item in group)
+        elif isinstance(group, dict):
+            for value in group.values():
+                if isinstance(value, list):
+                    deps.extend(str(item) for item in value)
+                elif value:
+                    deps.append(str(value))
+        elif group:
+            deps.append(str(group))
+    return deps
 REQUIRED_PRICE_COLUMNS = {"date", "close"}
 EXPLICIT_PRICE_COLUMNS = {"close_raw", "close_adj", "return_raw", "return_adj"}
 
@@ -72,6 +120,7 @@ def inspect_price_file(data_dir: Path, dep_name: str) -> Dict[str, Any]:
         "name": dep_name,
         "path": str(path),
         "known_missing": dep_name in KNOWN_MISSING_PRICE_DATA,
+        "data_kind": get_data_kind(dep_name),
         "exists": path.exists(),
         "ok": True,
         "schema": "missing",
@@ -119,7 +168,8 @@ def inspect_price_file(data_dir: Path, dep_name: str) -> Dict[str, Any]:
 def collect_price_dependencies(chains_config: Dict[str, Dict[str, Any]]) -> List[str]:
     deps = set()
     for cfg in chains_config.values():
-        for dep in cfg.get("data_deps", []) or []:
+        all_deps = list(cfg.get("data_deps", []) or []) + flatten_driver_dependencies(cfg.get("drivers", {}))
+        for dep in all_deps:
             if is_price_like(dep):
                 deps.add(dep)
     return sorted(deps)
