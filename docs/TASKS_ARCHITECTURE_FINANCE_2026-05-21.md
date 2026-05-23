@@ -474,13 +474,13 @@ data_sources/
 
 | 优先级 | 编号 | 任务 | 状态 |
 |--------|------|------|------|
-| P0 | P0-1 | 统一 API 执行链路 | TODO |
-| P0 | P0-2 | factor_value 显式契约 | TODO |
-| P1 | P1-1 | 显式价格列下沉到 parquet | TODO |
-| P1 | P1-2 | driver pattern 配置化 + 相关性接口 | TODO |
-| P2 | P2-1 | DataBus 可注入依赖 | TODO |
-| P2 | P2-2 | create_app app factory | TODO |
-| P2 | P2-3 | download_history adapter 拆分 | TODO |
+| P0 | P0-1 | 统一 API 执行链路 | ✅ 完成 |
+| P0 | P0-2 | factor_value 显式契约 | ✅ 完成 |
+| P1 | P1-1 | 显式价格列下沉到 parquet | ✅ 完成 |
+| P1 | P1-2 | driver pattern 配置化 + 相关性接口 | ✅ 完成 |
+| P2 | P2-1 | DataBus 可注入依赖 | ✅ 完成 |
+| P2 | P2-2 | create_app app factory | ✅ 完成 |
+| P2 | P2-3 | download_history adapter 拆分 | ✅ 完成 |
 
 ---
 
