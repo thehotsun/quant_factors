@@ -1,0 +1,131 @@
+{
+  "job": "daily_foreign",
+  "started_at": "2026-05-23T06:43:33.887054",
+  "ended_at": "2026-05-23T06:43:43.472718",
+  "summary": {
+    "total": 7,
+    "success": 7,
+    "skipped": 0,
+    "failed": 0,
+    "written": 7
+  },
+  "records": [
+    {
+      "name": "天然气期货",
+      "filename": "natural_gas_futures",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 2580,
+      "min_date": "2016-05-23",
+      "max_date": "2026-05-22",
+      "columns": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "position",
+        "s",
+        "settlement"
+      ]
+    },
+    {
+      "name": "CBOT大豆",
+      "filename": "cbot_soybean",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 2545,
+      "min_date": "2016-05-23",
+      "max_date": "2026-05-22",
+      "columns": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "position",
+        "s",
+        "settlement"
+      ]
+    },
+    {
+      "name": "VIX恐慌指数",
+      "filename": "vix",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 2731,
+      "min_date": "2015-02-09",
+      "max_date": "2026-05-22",
+      "columns": [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close"
+      ]
+    },
+    {
+      "name": "美国CPI",
+      "filename": "us_cpi",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 76,
+      "min_date": "2020-01-01",
+      "max_date": "2026-04-01",
+      "columns": [
+        "date",
+        "CPIAUCSL"
+      ]
+    },
+    {
+      "name": "布伦特原油",
+      "filename": "brent_oil",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 1612,
+      "min_date": "2020-01-02",
+      "max_date": "2026-05-18",
+      "columns": [
+        "date",
+        "close"
+      ]
+    },
+    {
+      "name": "EIA原油库存",
+      "filename": "eia_crude_stock",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 2277,
+      "min_date": "1982-08-20",
+      "max_date": "2026-05-15",
+      "columns": [
+        "date",
+        "total_stocks_kb",
+        "commercial_stocks_kb",
+        "weekly_change"
+      ]
+    },
+    {
+      "name": "TIPS收益率",
+      "filename": "tips_yield",
+      "status": "success",
+      "wrote": true,
+      "error": null,
+      "rows": 1666,
+      "min_date": "2020-01-02",
+      "max_date": "2026-05-21",
+      "columns": [
+        "date",
+        "DFII10"
+      ]
+    }
+  ]
+}

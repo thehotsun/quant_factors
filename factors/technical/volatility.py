@@ -36,8 +36,8 @@ class VolatilityFactor(BaseFactor):
     LONG_WINDOW = 60
 
     def __init__(self, data_dir: str = "./data", adaptive: bool = True,
-                 params: Dict[str, Any] = None, symbol: str = None):
-        super().__init__(data_dir, adaptive, params)
+                 params: Dict[str, Any] = None, symbol: str = None, data_bus=None):
+        super().__init__(data_dir, adaptive, params, data_bus=data_bus)
         self.symbol = symbol
 
     def calculate(self) -> Dict[str, Any]:

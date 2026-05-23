@@ -113,7 +113,8 @@ def normalize_factor_data(data: Any, factor_name: str = "unknown") -> Any:
 
 class FactorRunner:
     def __init__(self, chains_config: Dict[str, Dict[str, Any]], factor_params: Dict[str, Any],
-                 data_dir, signal_logger, ic_monitor, chain_defs: Dict[str, Any] = None):
+                 data_dir, signal_logger, ic_monitor, chain_defs: Dict[str, Any] = None,
+                 data_bus: "DataBus" = None):
         self.chains_config = chains_config
         self.factor_params = factor_params or {}
         self.data_dir = data_dir
@@ -121,6 +122,9 @@ class FactorRunner:
         self.ic_monitor = ic_monitor
         self.chain_defs = chain_defs or {}
         self._imported = False
+        # 持有共享 DataBus 实例，注入给因子避免全局单例
+        from core.data_bus import DataBus
+        self._data_bus = data_bus or DataBus(data_dir)
 
     def ensure_imported(self):
         if self._imported:
@@ -159,6 +163,7 @@ class FactorRunner:
                 "data_dir": str(self.data_dir),
                 "adaptive": factor_cfg.get("adaptive", True),
                 "params": factor_cfg.get("params", {}),
+                "data_bus": self._data_bus,
             }
             if symbol:
                 kwargs["symbol"] = symbol

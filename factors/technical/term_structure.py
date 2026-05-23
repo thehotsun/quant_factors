@@ -34,8 +34,8 @@ from core.factor_registry import FactorRegistry
 class TermStructureFactor(BaseFactor):
     def __init__(self, data_dir: str = "./data", adaptive: bool = True,
                  params: Dict[str, Any] = None, symbol: str = None,
-                 far_symbol: str = None):
-        super().__init__(data_dir, adaptive, params)
+                 far_symbol: str = None, data_bus=None):
+        super().__init__(data_dir, adaptive, params, data_bus=data_bus)
         self.symbol = symbol
         self.far_symbol = far_symbol
 

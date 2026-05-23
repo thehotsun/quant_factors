@@ -19,11 +19,11 @@ class BaseFactor(ABC):
     """
 
     def __init__(self, data_dir: str = "./data", adaptive: bool = True,
-                 params: Dict[str, Any] = None):
+                 params: Dict[str, Any] = None, data_bus: DataBus = None):
         self.data_dir = Path(data_dir)
         self.adaptive = adaptive
         self.params = params or {}
-        self._bus = DataBus(data_dir)
+        self._bus = data_bus or DataBus(data_dir)
         self._threshold_cache: Dict[str, float] = {}
         self._cached_data: Optional[Dict[str, Any]] = None
 
