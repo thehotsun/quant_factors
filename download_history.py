@@ -1,37 +1,37 @@
-import akshare as ak
-import pandas as pd
-import requests
+"""历史数据下载编排。
+
+数据源适配器已拆分到 data_sources/ 目录。本文件只负责：
+- save_parquet（规范化 + 原子写入）
+- main（下载编排入口）
+"""
 from pathlib import Path
 import os
 import tempfile
 import time
-from core.config import get_tushare_pro
+
+import akshare as ak
+import pandas as pd
+
+from core.price_schema import is_price_like, normalize_price_frame
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
 
 
-def _pro():
-    return get_tushare_pro()
-
+# ── 写入工具 ──────────────────────────────────────────────────
 
 def _normalize_history_frame(df):
     df = df.copy()
     if '日期' in df.columns:
         df.rename(columns={'日期': 'date'}, inplace=True)
-    if '月份' in df.columns:
-        df.rename(columns={'月份': 'date'}, inplace=True)
     if '收盘' in df.columns:
         df.rename(columns={'收盘': 'close'}, inplace=True)
     if 'date' in df.columns:
-        # 处理各种日期格式
         date_str = df['date'].astype(str)
         if date_str.str.contains('年').any():
-            # 中文格式: "2026年04月份"
             df['date'] = date_str.str.replace(r'年|月份?', '-', regex=True).str.rstrip('-')
         elif date_str.str.match(r'^\d{6}$').all():
-            # YYYYMM格式: "201501"
-            df['date'] = date_str + '01'  # 补充日期为01
+            df['date'] = date_str + '01'
         df['date'] = pd.to_datetime(df['date'], format='mixed')
         df = df.dropna(subset=['date']).sort_values('date')
     return df
@@ -49,7 +49,6 @@ def _atomic_write_parquet(df, file_path: Path):
         ) as tmp:
             tmp_path = Path(tmp.name)
         df.to_parquet(tmp_path, index=False)
-        # Read back before replacing so a broken write cannot clobber existing data.
         check = pd.read_parquet(tmp_path)
         if check.empty:
             raise ValueError("written parquet readback is empty")
@@ -67,8 +66,6 @@ def save_parquet(df, name):
     if df.empty:
         print(f"  {name} 规范化后无数据，保留已有文件")
         return False
-    # 价格数据写入显式列
-    from core.price_schema import is_price_like, normalize_price_frame
     if is_price_like(name):
         df = normalize_price_frame(df, name)
     file_path = DATA_DIR / f"{name}.parquet"
@@ -77,255 +74,15 @@ def save_parquet(df, name):
     return True
 
 
-def fetch_brent_oil():
-    """从 FRED 下载布伦特原油价格（日度）"""
-    try:
-        url = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU&cosd=2020-01-01'
-        df = pd.read_csv(url)
-        df = df.rename(columns={'observation_date': 'date', 'DCOILBRENTEU': 'close'})
-        df['date'] = pd.to_datetime(df['date'])
-        # 替换 "." 为 NaN（FRED 用 "." 表示缺失）
-        df['close'] = pd.to_numeric(df['close'], errors='coerce')
-        df = df.dropna(subset=['close'])
-        df = df.sort_values('date')
-        df.reset_index(drop=True, inplace=True)
-        print(f"  布伦特原油(FRED): {len(df)} 条, {df['date'].min().date()} ~ {df['date'].max().date()}")
-        return df
-    except Exception as e:
-        print(f"  布伦特原油下载失败: {e}")
-        return None
+# ── 数据源导入 ────────────────────────────────────────────────
+from data_sources.domestic_futures import fetch_tushare_futures, fetch_pork_futures_far  # noqa: E402
+from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
+from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
+from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
+from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
 
 
-def fetch_eia_crude_stock():
-    """从 EIA 官网下载美国原油库存周度数据（XLS 格式）"""
-    try:
-        from io import BytesIO
-        url = 'https://ir.eia.gov/wpsr/psw04.xls'
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        r = requests.get(url, headers=headers, timeout=30)
-        r.raise_for_status()
-
-        df = pd.read_excel(BytesIO(r.content), sheet_name='Data 1', header=None)
-        # Row 1 = sourcekey, Row 2 = description, Data starts from Row 3
-        # Column 0 = Date, Column 1 = WCESTUS1 (Weekly U.S. Ending Stocks of Crude Oil)
-        # Column 2 = WCESTP11 (Ending Stocks excluding SPR)
-        records = []
-        for i in range(3, len(df)):
-            date_val = df.iloc[i, 0]
-            total_stocks = df.iloc[i, 1]  # Total including SPR
-            commercial = df.iloc[i, 2]    # Excluding SPR
-            if pd.isna(date_val) or pd.isna(total_stocks):
-                continue
-            records.append({
-                'date': pd.to_datetime(date_val),
-                'total_stocks_kb': float(total_stocks),
-                'commercial_stocks_kb': float(commercial) if pd.notna(commercial) else None,
-            })
-
-        result = pd.DataFrame(records)
-        result = result.sort_values('date')
-        result.reset_index(drop=True, inplace=True)
-        # 计算变化率（周环比）
-        result['weekly_change'] = result['commercial_stocks_kb'].diff()
-        print(f"  EIA原油库存: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
-        return result
-    except Exception as e:
-        print(f"  EIA原油库存下载失败: {e}")
-        return None
-
-
-def fetch_fred_csv(series_id, name, start_date="2020-01-01"):
-    """从 FRED 直接下载 CSV 数据"""
-    try:
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
-        df = pd.read_csv(url)
-        df = df.rename(columns={'observation_date': 'date'})
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date')
-        return df
-    except Exception as e:
-        print(f"  {name} 下载失败: {e}")
-        return None
-
-
-def fetch_cbot_soybean():
-    """下载 CBOT 大豆连续合约历史数据。
-
-    AKShare 的外盘期货接口中，CBOT Soybean 对应 symbol="S"。
-    返回字段已包含 date/open/high/low/close，可直接供 CbotSoybeanFactor 使用。
-    """
-    try:
-        df = ak.futures_foreign_hist(symbol="S")
-        if df is None or df.empty:
-            print("  CBOT大豆下载为空")
-            return None
-        df["date"] = pd.to_datetime(df["date"])
-        for col in ["open", "high", "low", "close", "volume", "position", "settlement"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.dropna(subset=["date", "close"]).sort_values("date")
-        df.reset_index(drop=True, inplace=True)
-        return df
-    except Exception as e:
-        print(f"  CBOT大豆下载失败: {e}")
-        return None
-
-
-def fetch_pboc_social_financing():
-    """从央行官网抓取社会融资规模增量数据（XLSX 格式），并与 AKShare 历史数据合并"""
-    try:
-        from io import BytesIO
-        import re
-        # 央行社融数据页面
-        page_url = "http://www.pbc.gov.cn/diaochatongjisi/116219/116319/2026ntjsj/shrzgm/index.html"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        r = requests.get(page_url, headers=headers, timeout=15)
-        r.encoding = 'utf-8'
-        # 解析 XLS 链接
-        xlsx_match = re.search(r'(http://[^"\s]+\.xlsx)', r.text)
-        if not xlsx_match:
-            match = re.search(r'href="([^"]+\.xlsx)"', r.text)
-            if match:
-                xlsx_url = f"http://www.pbc.gov.cn{match.group(1)}"
-            else:
-                print("  央行社融 XLS 链接未找到")
-                return None
-        else:
-            xlsx_url = xlsx_match.group(1)
-
-        r2 = requests.get(xlsx_url, headers=headers, timeout=15)
-        df_raw = pd.read_excel(BytesIO(r2.content), header=None)
-
-        # 找到数据起始行（包含 "2026.01" 或类似格式的行）
-        data_start = None
-        for i in range(len(df_raw)):
-            val = str(df_raw.iloc[i, 0])
-            if re.match(r'\d{4}\.\d{2}$', val):
-                data_start = i
-                break
-        if data_start is None:
-            print("  央行社融数据起始行未找到")
-            return None
-
-        # 解析数据
-        rows = []
-        for i in range(data_start, len(df_raw)):
-            month_str = str(df_raw.iloc[i, 0]).strip()
-            if not re.match(r'\d{4}\.\d{2}$', month_str):
-                break
-            total = df_raw.iloc[i, 1]
-            if pd.isna(total) or str(total).strip() == '':
-                continue
-            row = {
-                '月份': month_str,
-                '社会融资规模增量': float(total),
-            }
-            col_map = {
-                '其中-人民币贷款': 2,
-                '其中-委托贷款外币贷款': 3,
-                '其中-委托贷款': 4,
-                '其中-信托贷款': 5,
-                '其中-未贴现银行承兑汇票': 6,
-                '其中-企业债券': 7,
-                '其中-非金融企业境内股票融资': 9,
-            }
-            for col_name, col_idx in col_map.items():
-                val = df_raw.iloc[i, col_idx]
-                row[col_name] = float(val) if pd.notna(val) and str(val).strip() != '' else 0
-            rows.append(row)
-
-        if not rows:
-            print("  央行社融数据为空")
-            return None
-
-        pboc_df = pd.DataFrame(rows)
-        pboc_df['月份'] = pboc_df['月份'].str.replace('.', '')
-        pboc_df['date'] = pd.to_datetime(pboc_df['月份'] + '01', format='%Y%m%d')
-        print(f"  央行社融 2026 数据: {len(pboc_df)} 条")
-
-        # 获取 AKShare 历史数据（2015-2025）
-        try:
-            ak_df = ak.macro_china_shrzgm()
-            if ak_df is not None and len(ak_df) > 0:
-                if 'date' not in ak_df.columns:
-                    ak_df['date'] = pd.to_datetime(ak_df['月份'].astype(str) + '01', format='%Y%m%d')
-                # 合并，央行数据优先（覆盖 AKShare 可能缺失的 2026 数据）
-                ak_df = ak_df[ak_df['date'] < '2026-01-01']
-                combined = pd.concat([ak_df, pboc_df], ignore_index=True)
-                combined = combined.sort_values('date')
-                combined.reset_index(drop=True, inplace=True)
-                # 删除多余的 '月份' 列，避免 save_parquet 冲突
-                if '月份' in combined.columns:
-                    combined.drop(columns=['月份'], inplace=True)
-                print(f"  合并后社融数据: {len(combined)} 条 (历史 {len(ak_df)} + 央行 {len(pboc_df)})")
-                return combined
-        except Exception as e:
-            print(f"  AKShare 历史数据获取失败: {e}")
-
-        if '月份' in pboc_df.columns:
-            pboc_df.drop(columns=['月份'], inplace=True)
-        return pboc_df
-    except Exception as e:
-        print(f"  央行社融抓取失败: {e}")
-        return None
-
-
-def fetch_pork_futures_far(start_day="20240101", end_day=None):
-    """Fetch pork futures far/dominant contract proxy from basis data.
-
-    AKShare's 100ppi basis endpoint exposes the daily dominant LH contract and
-    settlement price.  This is not a full contract-chain continuous far-month
-    construction yet, but it is a stable observable series for term-structure
-    work and is preferable to a missing dependency.
-    """
-    try:
-        if end_day is None:
-            end_day = pd.Timestamp.today().strftime("%Y%m%d")
-        df = ak.futures_spot_price_daily(start_day=start_day, end_day=end_day, vars_list=["LH"])
-        if df is None or df.empty:
-            print("  生猪远月/主力期货基差数据为空")
-            return None
-        result = df.copy()
-        result["date"] = pd.to_datetime(result["date"].astype(str), format="%Y%m%d", errors="coerce")
-        result["close"] = pd.to_numeric(result["dominant_contract_price"], errors="coerce")
-        result["spot_price"] = pd.to_numeric(result.get("spot_price"), errors="coerce")
-        result["basis"] = pd.to_numeric(result.get("dom_basis"), errors="coerce")
-        result["basis_rate"] = pd.to_numeric(result.get("dom_basis_rate"), errors="coerce")
-        result["contract"] = result.get("dominant_contract")
-        result["source"] = "akshare.futures_spot_price_daily:LH.dominant_contract_price"
-        keep = ["date", "close", "contract", "spot_price", "basis", "basis_rate", "source"]
-        result = result[keep].dropna(subset=["date", "close"]).sort_values("date")
-        result.reset_index(drop=True, inplace=True)
-        print(f"  生猪远月/主力期货代理: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
-        return result
-    except Exception as e:
-        print(f"  生猪远月/主力期货代理下载失败: {e}")
-        return None
-
-
-def fetch_tushare_futures(ts_code, name, start_date="20200101"):
-    """从 Tushare 获取期货主力合约日线数据"""
-    try:
-        df = _pro().fut_daily(ts_code=ts_code, start_date=start_date)
-        if df is not None and not df.empty:
-            # 重命名列以匹配原有格式
-            df = df.rename(columns={
-                'trade_date': 'date',
-                'open': 'open',
-                'high': 'high',
-                'low': 'low',
-                'close': 'close',
-                'vol': 'volume',
-                'amount': 'amount',
-                'oi': 'open_interest'
-            })
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date')
-        return df
-    except Exception as e:
-        print(f"  {name} 下载失败: {e}")
-        return None
-
+# ── 下载编排 ──────────────────────────────────────────────────
 
 def main():
     print("开始下载历史数据...")
@@ -357,7 +114,7 @@ def main():
         df = fetch_tushare_futures(code, name)
         if df is not None:
             save_parquet(df, filename)
-        time.sleep(0.5)  # 避免频率限制
+        time.sleep(0.5)
 
     print("17. 生猪远月/主力期货代理")
     try:
@@ -405,7 +162,6 @@ def main():
         if sf is not None:
             save_parquet(sf, "social_financing")
         else:
-            # 回退到 AKShare
             sf = ak.macro_china_shrzgm()
             save_parquet(sf, "social_financing")
     except Exception as e:
@@ -454,7 +210,6 @@ def main():
         if eia is not None:
             save_parquet(eia, "eia_crude_stock")
         else:
-            # 回退到 AKShare
             eia = ak.macro_usa_eia_crude_rate()
             save_parquet(eia, "eia_crude_stock")
     except Exception as e:
@@ -463,7 +218,6 @@ def main():
     print("27. QVIX波动率")
     try:
         vix = ak.index_option_300etf_qvix()
-        # QVIX 2019-12 才上线，过滤掉上线前的空行
         if vix is not None and 'open' in vix.columns:
             vix = vix.dropna(subset=['open', 'high', 'low', 'close'])
         save_parquet(vix, "vix")
@@ -478,7 +232,6 @@ def main():
     except Exception as e:
         print(f"  TIPS下载失败: {e}")
 
-    # ==================== 暂不支持的数据 ====================
     print("\n--- 暂不支持的数据 ---")
     print("  鸡肉现货(chicken_spot) - 未接入：尚未找到稳定公开历史接口；不使用网页 HTML 解析，不以白条鸡批发价冒充白羽肉鸡棚前价")
 
