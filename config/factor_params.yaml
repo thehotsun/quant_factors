@@ -343,6 +343,55 @@ aggregation:
   min_confidence: 0.40
   conflict_resolution: "strongest"
 
+# 宏观驱动分类（信号去重用）
+# trigger 名称包含关键词 → 归类为对应 driver
+# 修改此配置可实时调整 driver 分组，无需改代码
+driver_patterns:
+  growth:
+    - pmi
+    - gdp
+    - industrial
+    - manufacturing
+  inflation:
+    - cpi
+    - ppi
+    - inflation
+    - oil_
+    - crude
+  real_rate:
+    - tips
+    - real_rate
+    - gold_tips
+  fx:
+    - forex
+    - usd_cny
+    - rmb
+    - depreciation
+    - appreciation
+  risk_off:
+    - vix
+    - panic
+    - safe_haven
+    - gold_vix
+  inventory:
+    - eia
+    - stock
+    - inventory
+    - crude_stock
+  cost:
+    - feed_cost
+    - iron_ore
+    - cost_push
+    - crush_margin
+  seasonality:
+    - seasonal
+    - season
+  supply:
+    - supply_shock
+    - weather
+    - drought
+    - flood
+
 # 相关性去重分组（信号聚合时对同组信号降权）
 correlation_groups:
   corn_feed:

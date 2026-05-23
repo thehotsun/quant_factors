@@ -102,6 +102,9 @@ class CrudeOilFactor(BaseFactor):
                     elif result["eia_stock_change"] > 0:
                         result["eia_stock_direction"] = "小幅累库→中性偏空"
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
@@ -236,6 +239,9 @@ class NaturalGasFactor(BaseFactor):
             else:
                 result["inventory_signal"] = "价格适中→隐含库存正常→中性"
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
@@ -336,6 +342,9 @@ class OilGasRatio(BaseFactor):
                     self._zscore(result["oil_gas_ratio"], ratio_series), 2
                 )
 
+        result["factor_value"] = result.get("oil_gas_ratio")
+        result["factor_value_type"] = "ratio" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

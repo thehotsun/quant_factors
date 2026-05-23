@@ -106,6 +106,9 @@ class SilverFactor(BaseFactor):
                 prev_pmi = self._safe_float(pmi_df.tail(2), -2, col=col)
                 result["pmi_change"] = round(result["pmi"] - prev_pmi, 2) if result["pmi"] and prev_pmi else None
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

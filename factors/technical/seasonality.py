@@ -91,6 +91,9 @@ class SeasonalityFactor(BaseFactor):
             else:
                 result["seasonal_direction"] = "NEUTRAL"
 
+        result["factor_value"] = result.get("seasonal_avg_return")
+        result["factor_value_type"] = "return" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

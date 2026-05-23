@@ -94,6 +94,9 @@ class EggFeedRatio(BaseFactor):
                         "egg_feed_profit", self.BASE_PROFIT_THRESHOLD, ratio_series, vol_sensitivity=20
                     ), 2)
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

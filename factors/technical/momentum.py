@@ -101,6 +101,9 @@ class MomentumFactor(BaseFactor):
         if scores:
             result["momentum_score"] = round(float(np.average(scores, weights=weights)), 4)
 
+        result["factor_value"] = result.get("momentum_score")
+        result["factor_value_type"] = "score" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

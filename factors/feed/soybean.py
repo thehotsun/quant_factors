@@ -67,6 +67,9 @@ class SoybeanFactor(BaseFactor):
         if cbot and fx:
             result["import_cost_index"] = round(cbot * fx, 2)
 
+        result["factor_value"] = result.get("cbot_soybean")
+        result["factor_value_type"] = "raw_value" if result["factor_value"] is not None else None
+        result["factor_direction"] = "higher_better"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

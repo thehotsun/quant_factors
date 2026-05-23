@@ -112,6 +112,9 @@ class FeedCostIndex(BaseFactor):
                 result["index_ma20"] = round(float(idx_series.tail(20).mean()), 2)
                 result["index_percentile"] = round(self._percentile(index, idx_series) * 100, 1)
 
+        result["factor_value"] = result.get("feed_cost_index")
+        result["factor_value_type"] = "index" if result["factor_value"] is not None else None
+        result["factor_direction"] = "lower_better"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

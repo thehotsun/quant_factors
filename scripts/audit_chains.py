@@ -54,6 +54,7 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
             "metadata_diffs": 0,
             "known_missing_deps": 0,
             "unexpected_missing_deps": 0,
+            "fallback_factors": 0,
         },
         "modules": [],
         "price_schema": {
@@ -143,6 +144,11 @@ def audit_chains(run_calculate: bool = False) -> Dict[str, Any]:
                         item["warnings"].append("calculate did not return dict")
                     elif data.get("factor_value") is None and not missing_deps:
                         item["warnings"].append("factor_value is missing or None")
+                    # 检测 fallback 来源
+                    fv_source = data.get("factor_value_source", "none") if isinstance(data, dict) else "none"
+                    if fv_source.startswith("fallback:"):
+                        item["warnings"].append(f"factor_value via {fv_source}")
+                        report["summary"]["fallback_factors"] += 1
                     factor._cached_data = data
                     signal = factor.signal()
                     if signal is not None:
@@ -185,7 +191,8 @@ def main() -> int:
             f"errors={summary['errors']} warnings={summary['warnings']} "
             f"metadata_diffs={summary.get('metadata_diffs', 0)} "
             f"known_missing_deps={summary.get('known_missing_deps', 0)} "
-            f"unexpected_missing_deps={summary.get('unexpected_missing_deps', 0)}"
+            f"unexpected_missing_deps={summary.get('unexpected_missing_deps', 0)} "
+            f"fallback_factors={summary.get('fallback_factors', 0)}"
         )
         price_summary = report.get("price_schema", {}).get("summary", {})
         print(

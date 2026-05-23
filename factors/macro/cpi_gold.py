@@ -43,6 +43,9 @@ class CpiGoldFactor(BaseFactor):
 
         result["cpi_actual"] = round(actual, 1)
         result["diff"] = round(actual - expected, 1)
+        result["factor_value"] = result["diff"]
+        result["factor_value_type"] = "spread"
+        result["factor_direction"] = "two_sided"
 
         return result
 

@@ -88,6 +88,9 @@ class IronRebarCostLink(BaseFactor):
             else:
                 result["cost_push_signal"] = "铁矿石与螺纹钢同步→成本传导正常"
 
+        result["factor_value"] = result.get("iron_rebar_ratio")
+        result["factor_value_type"] = "ratio" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

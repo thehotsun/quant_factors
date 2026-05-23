@@ -78,6 +78,9 @@ class VixFactor(BaseFactor):
             if oil_change is not None and oil_change < -0.10 and current is not None and current > 30:
                 result["liquidity_crisis"] = "油价暴跌+VIX飙升→流动性危机→现金为王→黄金也可能承压"
 
+        result["factor_value"] = result.get("vix_current")
+        result["factor_value_type"] = "raw_value" if result["factor_value"] is not None else None
+        result["factor_direction"] = "lower_better"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

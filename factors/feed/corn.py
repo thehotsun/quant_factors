@@ -54,6 +54,9 @@ class CornFactor(BaseFactor):
             result["percentile_20d"] = self._percentile(current, close_series.tail(20)) if current else None
             result["adaptive_threshold"] = self._adaptive_threshold("corn_change", 0.02, close_series)
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

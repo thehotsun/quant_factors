@@ -121,25 +121,17 @@ def list_chains():
 @app.route('/factor/<chain_name>', methods=['GET'])
 def factor_data(chain_name):
     _runner.ensure_imported()
-    factor = _runner.instantiate(chain_name)
-    if factor is None:
+    result = _runner.calculate_only(chain_name)
+    if result is None:
         return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
-    try:
-        data = factor.calculate()
-        strength = None
-        if hasattr(factor, 'signal_strength'):
-            try:
-                strength = factor.signal_strength()
-            except Exception:
-                pass
-        return jsonify({
-            "chain": chain_name,
-            "factor_data": data,
-            "signal_strength": strength,
-            "timestamp": datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({"error": str(e), "error_type": type(e).__name__}), 500
+    if result.get("error"):
+        return jsonify({"error": result["error"], "error_type": result.get("error_type", "")}), 500
+    return jsonify({
+        "chain": chain_name,
+        "factor_data": result["factor_data"],
+        "signal_strength": result.get("signal_strength"),
+        "timestamp": datetime.now().isoformat()
+    })
 
 
 @app.route('/registry', methods=['GET'])
@@ -155,27 +147,17 @@ def list_registry():
 @app.route('/signal/<chain_name>', methods=['GET'])
 def signal_only(chain_name):
     _runner.ensure_imported()
-    factor = _runner.instantiate(chain_name)
-    if factor is None:
+    result = _runner.signal_only(chain_name)
+    if result is None:
         return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
-    try:
-        signal = factor.signal()
-        strength = None
-        if hasattr(factor, 'signal_strength'):
-            try:
-                strength = factor.signal_strength()
-            except Exception:
-                pass
-        today = datetime.now().strftime("%Y-%m-%d")
-        _signal_logger.log(chain_name, signal, strength, None, as_of=today, run_id=f"{chain_name}:{today}")
-        return jsonify({
-            "chain": chain_name,
-            "signal": signal,
-            "signal_strength": strength,
-            "timestamp": datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({"error": str(e), "error_type": type(e).__name__}), 500
+    if result.get("error"):
+        return jsonify({"error": result["error"], "error_type": result.get("error_type", "")}), 500
+    return jsonify({
+        "chain": chain_name,
+        "signal": result.get("signal"),
+        "signal_strength": result.get("signal_strength"),
+        "timestamp": datetime.now().isoformat()
+    })
 
 
 @app.route('/signals/history', methods=['GET'])

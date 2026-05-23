@@ -92,6 +92,9 @@ class CrushMargin(BaseFactor):
                     "crush_profit", self.BASE_PROFIT_THRESHOLD, margin_series.abs()
                 ), 2)
 
+        result["factor_value"] = result.get("crush_margin")
+        result["factor_value_type"] = "spread" if result["factor_value"] is not None else None
+        result["factor_direction"] = "higher_better"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

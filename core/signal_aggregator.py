@@ -7,35 +7,52 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _load_correlation_groups() -> Dict[str, Any]:
+def _load_yaml_config() -> Dict[str, Any]:
+    """Load factor_params.yaml once and cache."""
     try:
         params_path = Path(__file__).parent.parent / "config" / "factor_params.yaml"
         if params_path.exists():
             with open(params_path, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-                return config.get("correlation_groups", {})
+                return yaml.safe_load(f) or {}
     except Exception:
         pass
     return {}
+
+
+_YAML_CACHE: Dict[str, Any] = None  # type: ignore[assignment]
+
+
+def _get_config() -> Dict[str, Any]:
+    global _YAML_CACHE
+    if _YAML_CACHE is None:
+        _YAML_CACHE = _load_yaml_config()
+    return _YAML_CACHE
+
+
+def _load_correlation_groups() -> Dict[str, Any]:
+    return _get_config().get("correlation_groups", {})
+
+
+def _load_driver_patterns() -> Dict[str, List[str]]:
+    return _get_config().get("driver_patterns", {})
 
 
 class SignalAggregator:
     """信号聚合器：多因子信号融合 + 冲突消解 + 仓位计算 + 相关性去重"""
 
     CORRELATION_GROUPS = _load_correlation_groups()
+    # 从 config/factor_params.yaml 加载，支持热更新
+    DRIVER_PATTERNS: Dict[str, List[str]] = _load_driver_patterns()
 
-    # Trigger → macro driver classification for driver-based dedup
-    DRIVER_PATTERNS = {
-        "growth": ["pmi", "gdp", "industrial", "manufacturing"],
-        "inflation": ["cpi", "ppi", "inflation", "oil_", "crude"],
-        "real_rate": ["tips", "real_rate", "gold_tips"],
-        "fx": ["forex", "usd_cny", "rmb", "depreciation", "appreciation"],
-        "risk_off": ["vix", "panic", "safe_haven", "gold_vix"],
-        "inventory": ["eia", "stock", "inventory", "crude_stock"],
-        "cost": ["feed_cost", "iron_ore", "cost_push", "crush_margin"],
-        "seasonality": ["seasonal", "season"],
-        "supply": ["supply_shock", "weather", "drought", "flood"],
-    }
+    @classmethod
+    def reload_config(cls):
+        """热更新：重新加载 factor_params.yaml 中的 driver_patterns 和 correlation_groups。"""
+        global _YAML_CACHE
+        _YAML_CACHE = None
+        cls.DRIVER_PATTERNS = _load_driver_patterns()
+        cls.CORRELATION_GROUPS = _load_correlation_groups()
+        logger.info("SignalAggregator 配置已重载: driver_patterns=%d groups, correlation_groups=%d groups",
+                     len(cls.DRIVER_PATTERNS), len(cls.CORRELATION_GROUPS))
 
     @classmethod
     def _classify_driver(cls, trigger: str) -> str:
@@ -88,6 +105,27 @@ class SignalAggregator:
                     result[idx]["driver"] = driver
 
         return result
+
+    @staticmethod
+    def compute_signal_correlation_discount(signals: List[Dict], history: Any = None) -> Dict[str, float]:
+        """预留接口：基于历史相关性计算信号折扣系数。
+
+        当前返回空 dict（规则折扣由 _dedup_drivers 处理）。
+        未来接入历史价格/信号数据后，可替换为相关矩阵计算：
+
+            1. 收集各信号 trigger 对应品种的历史收益率序列
+            2. 计算 pairwise correlation matrix
+            3. 对高相关 pair (|ρ| > 0.7) 中较弱信号施加折扣
+            4. 返回 {trigger: discount_factor} 映射
+
+        Args:
+            signals: 待评估信号列表
+            history: 历史数据（当前未使用，预留）
+
+        Returns:
+            {trigger_name: discount_factor}，1.0 = 不折扣，<1.0 = 降权
+        """
+        return {}
 
     @classmethod
     def _dedup_correlated(cls, signals: List[Dict]) -> List[Dict]:

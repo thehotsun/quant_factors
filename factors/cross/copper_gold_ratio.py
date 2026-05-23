@@ -68,6 +68,9 @@ class CopperGoldRatio(BaseFactor):
                 result["ratio_percentile"] = round(self._percentile(ratio, ratio_series) * 100, 1)
                 result["ratio_zscore"] = round(self._zscore(ratio, ratio_series), 2)
 
+        result["factor_value"] = result.get("copper_gold_ratio")
+        result["factor_value_type"] = "ratio" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

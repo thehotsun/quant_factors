@@ -32,6 +32,36 @@ EXPLICIT_PRICE_COLUMNS = {"close_raw", "close_adj", "return_raw", "return_adj"}
 #   close      — Backward-compatible alias; equals close_adj after DataBus processing.
 
 
+def normalize_price_frame(df: "pd.DataFrame", dataset_name: str, is_futures: bool = False) -> "pd.DataFrame":
+    """Add explicit price columns (close_raw/close_adj/return_raw/return_adj) to a price DataFrame.
+
+    Call this BEFORE writing parquet so that downstream readers get explicit
+    price semantics without relying on DataBus runtime injection.
+
+    - For futures data with roll-gap adjustment: close_adj differs from close_raw.
+    - For non-futures data: close_raw == close_adj (no adjustment).
+    - Returns are computed from the respective close series.
+    """
+    import pandas as pd
+
+    if df is None or df.empty or 'close' not in df.columns:
+        return df
+
+    result = df.copy()
+    close = result['close'].astype(float)
+
+    if 'close_raw' not in result.columns:
+        result['close_raw'] = close
+    if 'close_adj' not in result.columns:
+        result['close_adj'] = close  # Will be overwritten by roll-gap adjustment if applicable
+    if 'return_raw' not in result.columns:
+        result['return_raw'] = result['close_raw'].pct_change()
+    if 'return_adj' not in result.columns:
+        result['return_adj'] = result['close_adj'].pct_change()
+
+    return result
+
+
 def is_price_like(dep_name: str) -> bool:
     return dep_name in PRICE_DATA_NAMES
 

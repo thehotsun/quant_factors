@@ -90,8 +90,18 @@ def normalize_factor_data(data: Any, factor_name: str = "unknown") -> Any:
     if not isinstance(data, dict):
         return data
     result = dict(data)
-    if result.get("factor_value") is None:
+    if result.get("factor_value") is not None:
+        # 显式声明 factor_value
+        result.setdefault("factor_value_source", "explicit")
+    else:
         result["factor_value"] = extract_factor_value(result, factor_name)
+        # 标记 fallback 来源
+        for key in FACTOR_VALUE_KEYS:
+            if key != "factor_value" and key in data and data[key] is not None:
+                result.setdefault("factor_value_source", f"fallback:{key}")
+                break
+        else:
+            result.setdefault("factor_value_source", "none")
     # Infer factor_value_type from the key that was used
     if result.get("factor_value_type") is None:
         for key in FACTOR_VALUE_KEYS:
@@ -158,6 +168,65 @@ class FactorRunner:
         except Exception as e:
             logger.warning("实例化因子 %s 失败: %s", chain_name, e)
             return None
+
+    def calculate_only(self, chain_name: str) -> Optional[Dict[str, Any]]:
+        """标准化计算：instantiate → calculate → normalize，不做 signal/日志/IC。"""
+        factor = self.instantiate(chain_name)
+        if factor is None:
+            return None
+        try:
+            data = normalize_factor_data(factor.calculate(), chain_name)
+        except Exception as e:
+            logger.error("因子 %s calculate 失败: %s", chain_name, e)
+            return {
+                "factor_data": None,
+                "signal_strength": None,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }
+
+        strength = None
+        if hasattr(factor, "signal_strength"):
+            try:
+                strength = factor.signal_strength()
+            except Exception:
+                pass
+
+        return {
+            "factor_data": data,
+            "signal_strength": strength,
+        }
+
+    def signal_only(self, chain_name: str) -> Optional[Dict[str, Any]]:
+        """标准化信号：calculate_only → signal → 日志记录。"""
+        calc_result = self.calculate_only(chain_name)
+        if calc_result is None:
+            return None
+        if calc_result.get("error"):
+            return calc_result
+
+        data = calc_result["factor_data"]
+        strength = calc_result["signal_strength"]
+
+        factor = self.instantiate(chain_name)
+        if factor is None:
+            return None
+        factor._cached_data = data
+
+        try:
+            signal = factor.signal()
+        except Exception as e:
+            logger.error("因子 %s signal 失败: %s", chain_name, e)
+            signal = None
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        self.signal_logger.log(chain_name, signal, strength, data, as_of=today, run_id=f"{chain_name}:{today}")
+
+        return {
+            "factor_data": data,
+            "signal": signal,
+            "signal_strength": strength,
+        }
 
     def run_chain(self, chain_name: str) -> Optional[Dict[str, Any]]:
         factor = self.instantiate(chain_name)

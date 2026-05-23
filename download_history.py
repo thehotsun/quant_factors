@@ -67,6 +67,10 @@ def save_parquet(df, name):
     if df.empty:
         print(f"  {name} 规范化后无数据，保留已有文件")
         return False
+    # 价格数据写入显式列
+    from core.price_schema import is_price_like, normalize_price_frame
+    if is_price_like(name):
+        df = normalize_price_frame(df, name)
     file_path = DATA_DIR / f"{name}.parquet"
     _atomic_write_parquet(df, file_path)
     print(f"  {name}: {len(df)} 条记录 -> {file_path}")

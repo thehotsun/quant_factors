@@ -53,6 +53,9 @@ class PigChickenSpread(BaseFactor):
             if pork_price and chicken_price and chicken_price > 0:
                 result["pig_chicken_ratio"] = round(pork_price / chicken_price, 2)
 
+        result["factor_value"] = result.get("pig_chicken_ratio")
+        result["factor_value_type"] = "ratio" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

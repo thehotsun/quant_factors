@@ -59,6 +59,9 @@ class RapeseedMealFactor(BaseFactor):
                 result["meal_rapeseed_spread"] = round(meal_price - current, 2)
                 result["meal_rapeseed_ratio"] = round(meal_price / current, 2) if current > 0 else None
 
+        result["factor_value"] = result.get("current_price")
+        result["factor_value_type"] = "raw_value" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

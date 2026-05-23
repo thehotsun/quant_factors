@@ -81,6 +81,9 @@ class ForexCommodityLink(BaseFactor):
                 op5 = self._safe_float(oil_df.tail(5), -5)
                 result["oil_change_5d"] = self._pct_change(op, op5)
 
+        result["factor_value"] = result.get("usd_cny")
+        result["factor_value_type"] = "raw_value" if result["factor_value"] is not None else None
+        result["factor_direction"] = "lower_better"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

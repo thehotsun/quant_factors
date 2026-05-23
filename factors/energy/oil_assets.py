@@ -40,6 +40,9 @@ class OilAssetsFactor(BaseFactor):
         result["current"] = current
         result["previous"] = previous
         result["daily_change"] = change
+        result["factor_value"] = current
+        result["factor_value_type"] = "raw_value"
+        result["factor_direction"] = "two_sided"
 
         return result
 

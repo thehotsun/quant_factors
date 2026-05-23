@@ -78,6 +78,9 @@ class PorkFactor(BaseFactor):
             else:
                 result["cycle_position"] = "微利→牧原盈利/行业微利→正常"
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

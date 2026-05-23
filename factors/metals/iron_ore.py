@@ -63,6 +63,9 @@ class IronOreFactor(BaseFactor):
             result["steel_profit"] = round(rebar_p - iron_p * 1.6 - 800, 0)
             result["iron_cost_ratio"] = round(iron_p * 1.6 / rebar_p * 100, 1)
 
+        result["factor_value"] = result.get("iron_ore_price")
+        result["factor_value_type"] = "raw_value" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

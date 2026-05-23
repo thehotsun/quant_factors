@@ -115,6 +115,9 @@ class CopperFactor(BaseFactor):
                 prev_pmi = self._safe_float(pmi_df.tail(2), -2, col=col)
                 result["pmi_change"] = round(result["pmi"] - prev_pmi, 2) if result["pmi"] and prev_pmi else None
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
@@ -228,6 +231,9 @@ class AluminumFactor(BaseFactor):
                 else:
                     result["energy_cost_pressure"] = "正常"
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
@@ -316,6 +322,9 @@ class RebarFactor(BaseFactor):
             result["percentile_20d"] = self._percentile(current, close.tail(20)) if current else None
             result["volatility_20d"] = round(float(close.pct_change().tail(20).std()), 4)
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
@@ -426,6 +435,9 @@ class GoldFactor(BaseFactor):
                 if result["tips_yield"] and prev_tips:
                     result["tips_change"] = round(result["tips_yield"] - prev_tips, 4)
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

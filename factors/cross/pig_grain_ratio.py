@@ -98,6 +98,9 @@ class PigGrainRatio(BaseFactor):
             else:
                 result["warning_level"] = "正常"
 
+        result["factor_value"] = result.get("pig_grain_ratio")
+        result["factor_value_type"] = "ratio" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

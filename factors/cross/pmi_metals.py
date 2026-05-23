@@ -72,6 +72,9 @@ class PMIMetalsLink(BaseFactor):
                 ap20 = self._safe_float(aluminum_df.tail(20), -20)
                 result["aluminum_change_20d"] = self._pct_change(ap, ap20)
 
+        result["factor_value"] = result.get("pmi")
+        result["factor_value_type"] = "raw_value" if result["factor_value"] is not None else None
+        result["factor_direction"] = "higher_better"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

@@ -84,6 +84,9 @@ class TermStructureFactor(BaseFactor):
                 result["spread_ma20"] = round(float(spread_series.tail(20).mean()), 2)
                 result["spread_percentile"] = round(self._percentile(spread, spread_series) * 100, 1)
 
+        result["factor_value"] = result.get("spread")
+        result["factor_value_type"] = "spread" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:

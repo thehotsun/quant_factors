@@ -53,6 +53,9 @@ class CbotSoybeanFactor(BaseFactor):
             if fx:
                 result["import_cost_cny"] = round(current * fx, 2)
 
+        result["factor_value"] = result.get("zscore_20d")
+        result["factor_value_type"] = "zscore" if result["factor_value"] is not None else None
+        result["factor_direction"] = "two_sided"
         return result
 
     def signal(self) -> Optional[Dict[str, Any]]:
