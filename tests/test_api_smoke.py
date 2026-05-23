@@ -1,12 +1,14 @@
 import unittest
 
-from server import app, CHAINS_CONFIG
+from server import create_app
 
 
 class ApiSmokeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.client = app.test_client()
+        cls.app = create_app({"skip_scheduler": True})
+        cls.client = cls.app.test_client()
+        cls.CHAINS_CONFIG = cls.app.chains_config
 
     def test_health(self):
         resp = self.client.get("/health")
@@ -17,11 +19,11 @@ class ApiSmokeTest(unittest.TestCase):
         resp = self.client.get("/chains")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
-        self.assertEqual(data.get("total"), len(CHAINS_CONFIG))
-        self.assertEqual(len(data.get("chains", [])), len(CHAINS_CONFIG))
+        self.assertEqual(data.get("total"), len(self.CHAINS_CONFIG))
+        self.assertEqual(len(data.get("chains", [])), len(self.CHAINS_CONFIG))
 
     def test_all_analyze_endpoints_return_success(self):
-        for chain_name in CHAINS_CONFIG:
+        for chain_name in self.CHAINS_CONFIG:
             with self.subTest(chain=chain_name):
                 resp = self.client.get(f"/analyze/{chain_name}")
                 self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True)[:300])
@@ -30,7 +32,7 @@ class ApiSmokeTest(unittest.TestCase):
 
     def test_composite_response_schema(self):
         composite_chains = [
-            name for name, cfg in CHAINS_CONFIG.items()
+            name for name, cfg in self.CHAINS_CONFIG.items()
             if cfg.get("category") == "composite"
         ]
         self.assertTrue(composite_chains)
