@@ -235,8 +235,37 @@ def create_app(settings=None):
             "chain": chain_name,
             "description": cfg.get("description", ""),
             "recommendation": rec,
+            "price_context": _build_price_context(chain_name),
             "timestamp": datetime.now().isoformat(),
         })
+
+    def _build_price_context(chain_name: str):
+        """Build spot + futures price context for a chain."""
+        from core.push import _SPOT_FUTURES_PAIRS, _get_price_trend, _get_price_position, _format_trend, _position_label, _period_label
+        pair = _SPOT_FUTURES_PAIRS.get(chain_name)
+        if not pair:
+            return None
+        futures_dep, spot_dep, label = pair
+        context = []
+        # 期货
+        prices = _get_price_trend(data_bus, futures_dep)
+        if prices:
+            trend = _format_trend(prices)
+            pos = _get_price_position(data_bus, futures_dep)
+            pos_str = ""
+            if pos:
+                pct = pos["percentile"]
+                lbl = _position_label(pct)
+                period = _period_label(pos["sample_days"])
+                pos_str = f"📍 {period}：仅{pct:.0f}%的交易日比现在更便宜（{lbl}）"
+            context.append({"label": f"{label}期货", "trend": trend, "position": pos_str})
+        # 现货
+        if spot_dep:
+            spot_prices = _get_price_trend(data_bus, spot_dep)
+            if spot_prices:
+                spot_trend = _format_trend(spot_prices)
+                context.append({"label": f"{label}现货", "trend": spot_trend, "position": ""})
+        return context if context else None
 
     @app.route('/recommendations/daily', methods=['GET'])
     def daily_overview():

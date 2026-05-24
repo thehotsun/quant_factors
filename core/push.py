@@ -148,25 +148,42 @@ class PushManager:
 # 每个链条只列最重要的，避免信息过载
 _KEY_ASSETS = {
     'full_meat_chain': [
-        ('pork_futures', '生猪'),       # 核心品种
-        ('egg_futures', '鸡蛋'),         # 替代品
-        ('soybean_meal_futures', '豆粕'), # 主要饲料成本
-        ('corn_futures', '玉米'),         # 主要饲料成本
+        ('pork_futures', 'pork_spot', '生猪'),       # 核心品种：期货+现货
+        ('egg_futures', 'egg_spot', '鸡蛋'),         # 替代品
+        ('soybean_meal_futures', 'soybean_meal_spot', '豆粕'), # 主要饲料成本
+        ('corn_futures', 'corn_spot', '玉米'),         # 主要饲料成本
     ],
     'energy_chain': [
-        ('crude_oil_futures', '原油'),     # 核心品种
-        ('natural_gas_futures', '天然气'), # 替代能源
+        ('crude_oil_futures', None, '原油'),     # 核心品种
+        ('natural_gas_futures', None, '天然气'), # 替代能源
     ],
     'metals_chain': [
-        ('gold_futures', '黄金'),          # 必选
-        ('silver_futures', '白银'),        # 必选
-        ('copper_futures', '铜'),           # 经济晴雨表
-        ('iron_ore_futures', '铁矿石'),    # 螺纹钢成本核心
+        ('gold_futures', 'gold_spot', '黄金'),          # 必选
+        ('silver_futures', 'silver_spot', '白银'),        # 必选
+        ('copper_futures', 'copper_spot', '铜'),           # 经济晴雨表
+        ('iron_ore_futures', 'iron_ore_spot', '铁矿石'),    # 螺纹钢成本核心
     ],
     'macro_chain': [
-        ('vix', 'VIX恐慌指数'),             # 风险情绪
-        ('usd_cny', '美元/人民币'),        # 汇率
+        ('vix', None, 'VIX恐慌指数'),             # 风险情绪
+        ('usd_cny', None, '美元/人民币'),        # 汇率
     ],
+}
+
+# 单链条的现货/期货配对（用于 /recommend 接口）
+_SPOT_FUTURES_PAIRS = {
+    'pork_etf': ('pork_futures', 'pork_spot', '生猪'),
+    'copper': ('copper_futures', 'copper_spot', '铜'),
+    'aluminum': ('aluminum_futures', 'aluminum_spot', '铝'),
+    'rebar': ('rebar_futures', 'rebar_spot', '螺纹钢'),
+    'iron_ore': ('iron_ore_futures', 'iron_ore_spot', '铁矿石'),
+    'gold': ('gold_futures', 'gold_spot', '黄金'),
+    'silver': ('silver_futures', 'silver_spot', '白银'),
+    'corn': ('corn_futures', 'corn_spot', '玉米'),
+    'soybean_meal': ('soybean_meal_futures', 'soybean_meal_spot', '豆粕'),
+    'soybean': ('soybean_domestic_futures', 'soybean_domestic_spot', '国产大豆'),
+    'soybean_oil': ('soybean_oil_futures', 'soybean_oil_spot', '豆油'),
+    'rapeseed_meal': ('rapeseed_meal_futures', 'rapeseed_meal_spot', '菜粕'),
+    'egg': ('egg_futures', 'egg_spot', '鸡蛋'),
 }
 
 
@@ -275,14 +292,15 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
     chain_name = composite_results.get("chain", "")
     description = composite_results.get("description", "")
 
-    # Build price context
+    # Build price context (现货 + 期货)
     price_context = []
     if data_bus is not None:
         key_assets = _KEY_ASSETS.get(chain_name, [])
-        for data_dep, label in key_assets:
-            prices = _get_price_trend(data_bus, data_dep)
+        for futures_dep, spot_dep, label in key_assets:
+            # 期货价格
+            prices = _get_price_trend(data_bus, futures_dep)
             trend_str = format_trend(prices) if prices else ""
-            pos = _get_price_position(data_bus, data_dep)
+            pos = _get_price_position(data_bus, futures_dep)
             pos_str = ""
             if pos:
                 pct = pos["percentile"]
@@ -290,7 +308,13 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
                 period = period_label(pos["sample_days"])
                 pos_str = f"📍 {period}：仅{pct:.0f}%的交易日比现在更便宜（{lbl}）"
             if trend_str:
-                price_context.append({"label": label, "trend": trend_str, "position": pos_str})
+                price_context.append({"label": f"{label}期货", "trend": trend_str, "position": pos_str})
+            # 现货价格
+            if spot_dep:
+                spot_prices = _get_price_trend(data_bus, spot_dep)
+                if spot_prices:
+                    spot_trend = format_trend(spot_prices)
+                    price_context.append({"label": f"{label}现货", "trend": spot_trend, "position": ""})
 
     if aggregated:
         rec = RecommendationEngine.from_aggregated(aggregated)
