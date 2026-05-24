@@ -80,7 +80,7 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
 from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
 from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
 from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
-from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot, fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot, fetch_rebar_spot, fetch_iron_ore_spot  # noqa: E402
+from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot, fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot, fetch_rebar_spot, fetch_iron_ore_spot, fetch_aluminum_spot, fetch_soybean_domestic_spot  # noqa: E402
 from data_sources.equity import fetch_etf_hist, fetch_stock_hist  # noqa: E402
 
 
@@ -327,6 +327,20 @@ def main():
             save_parquet(iron_ore_spot, "iron_ore_spot")
     except Exception as e:
         print(f"  铁矿石现货下载失败: {e}")
+
+    try:
+        aluminum_spot = fetch_aluminum_spot(start_day="20200101")
+        if aluminum_spot is not None:
+            save_parquet(aluminum_spot, "aluminum_spot")
+    except Exception as e:
+        print(f"  铝现货下载失败: {e}")
+
+    try:
+        soybean_domestic_spot = fetch_soybean_domestic_spot(start_day="20200101")
+        if soybean_domestic_spot is not None:
+            save_parquet(soybean_domestic_spot, "soybean_domestic_spot")
+    except Exception as e:
+        print(f"  国产大豆现货下载失败: {e}")
 
     # Step 14: 其他农产品现货（生意社）
     print("\n[Step 14] 下载现货数据（其他农产品）...")

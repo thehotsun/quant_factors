@@ -172,3 +172,13 @@ def fetch_rebar_spot(start_day: str = "20200101"):
 def fetch_iron_ore_spot(start_day: str = "20200101"):
     """获取铁矿石现货价格（生意社）。"""
     return _fetch_spot_from_bizhi(["I"], "铁矿石", start_day)
+
+
+def fetch_aluminum_spot(start_day: str = "20200101"):
+    """获取铝现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["AL"], "铝", start_day)
+
+
+def fetch_soybean_domestic_spot(start_day: str = "20200101"):
+    """获取国产大豆现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["A"], "国产大豆", start_day)
