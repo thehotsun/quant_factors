@@ -1,7 +1,7 @@
 # 方案三：现货 + 期货 + 股票/ETF 混合信号链 — 任务清单
 
-**最后更新**: 2026-05-23 23:25
-**当前阶段**: Batch 2 完成，Batch 3/4 待用户确认
+**最后更新**: 2026-05-24 09:50
+**当前阶段**: Batch 2.5 完成（数据源适配器），Batch 3/4 待用户确认
 
 ---
 
@@ -19,6 +19,10 @@
 8. 链条配置校验器 `scripts/validate_chain_schema.py`
 9. 审计器支持 known_missing 分类
 10. 全量 210 测试通过
+11. 现货数据源适配器 `data_sources/spot.py` — fetch_pork_spot()
+12. 股票/ETF 数据源适配器 `data_sources/equity.py` — fetch_etf_hist() + fetch_stock_hist()
+13. download_history.py 编排新数据源（生猪现货 + 3 个股票/ETF）
+14. KNOWN_MISSING_PRICE_DATA 精简至 chicken_spot
 
 ---
 
@@ -28,8 +32,9 @@
 |------|------|------|--------|
 | Batch 1 | 架构层定型（任务 1-4） | ✅ 完成 | 585dadd |
 | Batch 2 | DataBus + 因子基类 + 样板链 + 审计（任务 8-11, 13-14, 24-25） | ✅ 完成 | 99007ed |
+| Batch 2.5 | 数据源适配器（任务 5-7） | ✅ 完成 | |
 | Batch 3 | 回测层 + 信号层升级（任务 12, 15-20） | ⏸ 待确认 | |
-| Batch 4 | 数据源接入 + API + 推送（任务 5-7, 21-23, 26-29） | ⏸ 待确认 | |
+| Batch 4 | 实际数据接入 + API + 推送（任务 21-23, 26-29） | ⏸ 待确认 | |
 
 ---
 
@@ -44,9 +49,9 @@
 
 ### 阶段二：数据源层升级
 
-- [ ] **任务 5**: 建立现货数据源适配器目录 `data_sources/spot/`
-- [ ] **任务 6**: 建立权益/ETF 数据源适配器 `data_sources/equity.py`
-- [ ] **任务 7**: 统一 `save_parquet()` 对不同数据类型的处理
+- [x] **任务 5**: 建立现货数据源适配器目录 `data_sources/spot.py` — fetch_pork_spot()
+- [x] **任务 6**: 建立权益/ETF 数据源适配器 `data_sources/equity.py` — fetch_etf_hist() + fetch_stock_hist()
+- [x] **任务 7**: 统一 `save_parquet()` 对不同数据类型的处理 — 已通过 _normalize_history_frame + normalize_price_frame 自动处理
 
 ### 阶段三：DataBus 强化
 
@@ -113,6 +118,8 @@
 | `config/chains.yaml` | 56 条链，含 3 条新混合链 |
 | `scripts/validate_chain_schema.py` | 链条配置校验器 |
 | `scripts/audit_chains.py` | 审计器支持 known_missing |
+| `data_sources/spot.py` | 现货数据源适配器（生猪现货） |
+| `data_sources/equity.py` | 股票/ETF 数据源适配器 |
 | `docs/MIXED_CHAIN_TASKLIST.md` | 本文档 |
 
 ---

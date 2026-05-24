@@ -20,7 +20,7 @@ PRICE_DATA_NAMES = {
     "iron_ore_futures", "natural_gas_futures", "brent_oil", "cbot_soybean",
     "vix", "chicken_spot", "pork_spot", "breeding_etf", "gold_etf", "petrochina_stock",
 }
-KNOWN_MISSING_PRICE_DATA = {"chicken_spot", "pork_spot", "breeding_etf", "gold_etf", "petrochina_stock"}
+KNOWN_MISSING_PRICE_DATA = {"chicken_spot"}
 
 # Dataset kind is intentionally separate from price schema:
 # - futures: tradeable futures/continuous contracts; Chinese futures may receive roll-gap adjustment.

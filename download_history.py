@@ -80,6 +80,8 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
 from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
 from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
 from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
+from data_sources.spot import fetch_pork_spot  # noqa: E402
+from data_sources.equity import fetch_etf_hist, fetch_stock_hist  # noqa: E402
 
 
 # ── 下载编排 ──────────────────────────────────────────────────
@@ -231,6 +233,42 @@ def main():
             save_parquet(tips, "tips_yield")
     except Exception as e:
         print(f"  TIPS下载失败: {e}")
+
+    print("\n--- 现货数据 ---")
+
+    print("29. 生猪现货")
+    try:
+        pork_spot = fetch_pork_spot()
+        if pork_spot is not None:
+            save_parquet(pork_spot, "pork_spot")
+    except Exception as e:
+        print(f"  生猪现货下载失败: {e}")
+
+    print("\n--- 股票/ETF 数据 ---")
+
+    print("30. 养殖ETF(159865)")
+    try:
+        breeding_etf = fetch_etf_hist("159865", "养殖ETF")
+        if breeding_etf is not None:
+            save_parquet(breeding_etf, "breeding_etf")
+    except Exception as e:
+        print(f"  养殖ETF下载失败: {e}")
+
+    print("31. 黄金ETF(518880)")
+    try:
+        gold_etf = fetch_etf_hist("518880", "黄金ETF")
+        if gold_etf is not None:
+            save_parquet(gold_etf, "gold_etf")
+    except Exception as e:
+        print(f"  黄金ETF下载失败: {e}")
+
+    print("32. 中国石油(601857)")
+    try:
+        petrochina = fetch_stock_hist("601857", "中国石油")
+        if petrochina is not None:
+            save_parquet(petrochina, "petrochina_stock")
+    except Exception as e:
+        print(f"  中国石油下载失败: {e}")
 
     print("\n--- 暂不支持的数据 ---")
     print("  鸡肉现货(chicken_spot) - 未接入：尚未找到稳定公开历史接口；不使用网页 HTML 解析，不以白条鸡批发价冒充白羽肉鸡棚前价")

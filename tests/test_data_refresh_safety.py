@@ -49,8 +49,8 @@ class DataRefreshSafetyTest(unittest.TestCase):
             for dep in item.get("known_missing_deps", [])
         }
         self.assertIn(("pig_chicken_spread", "chicken_spot"), known)
-        self.assertIn(("pork_stock_signal", "pork_spot"), known)
-        self.assertIn(("gold_etf_signal", "gold_etf"), known)
+        # pork_spot, gold_etf, breeding_etf, petrochina_stock now have data source adapters
+        # so they are no longer in known_missing (they'll be fetched at download time)
         self.assertNotIn(("term_structure", "pork_futures_far"), known)
 
 
