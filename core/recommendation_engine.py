@@ -230,14 +230,21 @@ class RecommendationEngine:
                     "value": fv,
                     "type": fv_type,
                 })
-            # Include zscore, ratio, etc. if present
-            for key in ("zscore", "zscore_20d", "ratio", "momentum_score", "score"):
+            # Include zscore, ratio, momentum, score fields
+            _COMPONENT_KEYS = (
+                "zscore", "zscore_20d", "ratio", "momentum_score", "score",
+                "pork_zscore", "feed_cost_change_20d", "spot_change_5d",
+                "equity_momentum_20d", "pork_momentum_20d",
+                "commodity_signal", "cost_signal", "equity_signal",
+                "current_price", "spot_price", "feed_cost_index",
+            )
+            for key in _COMPONENT_KEYS:
                 if key in factor_data and factor_data[key] is not None:
                     try:
                         components.append({
                             "name": key,
                             "value": float(factor_data[key]),
-                            "type": key,
+                            "type": fv_type or key,
                         })
                     except (TypeError, ValueError):
                         pass

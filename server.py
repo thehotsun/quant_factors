@@ -238,6 +238,70 @@ def create_app(settings=None):
             "timestamp": datetime.now().isoformat(),
         })
 
+    @app.route('/recommendations/daily', methods=['GET'])
+    def daily_overview():
+        """每日总览：返回所有链条今日的建议列表。"""
+        runner.ensure_imported()
+        buy_list = []
+        sell_list = []
+        hold_list = []
+        data_issues = []
+
+        for chain_name, cfg in chains_config.items():
+            if cfg.get("category") == "composite":
+                continue  # Skip composites for daily overview
+            try:
+                result = runner.run_chain(chain_name)
+                if result is None:
+                    continue
+                if result.get("error"):
+                    continue
+                chain_meta = runner._chain_meta(chain_name)
+                rec = RecommendationEngine.from_signal({
+                    **result,
+                    "chain_meta": chain_meta,
+                })
+                entry = {
+                    "chain": chain_name,
+                    "description": cfg.get("description", ""),
+                    "recommendation": rec["recommendation"],
+                    "label": rec["label"],
+                    "strength": rec["strength"],
+                    "confidence": rec["confidence"],
+                    "reason": rec["reason"],
+                }
+                if rec["recommendation"] == "BUY":
+                    buy_list.append(entry)
+                elif rec["recommendation"] == "SELL":
+                    sell_list.append(entry)
+                else:
+                    hold_list.append(entry)
+                # Track data issues
+                if rec["missing_drivers"] or rec["data_notes"]:
+                    data_issues.append({
+                        "chain": chain_name,
+                        "missing_drivers": rec["missing_drivers"],
+                        "data_notes": rec["data_notes"],
+                    })
+            except Exception as e:
+                logger.warning("daily_overview: %s 失败: %s", chain_name, e)
+
+        return jsonify({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "buy": buy_list,
+            "sell": sell_list,
+            "hold": hold_list,
+            "data_issues": data_issues,
+            "summary": {
+                "total": len(buy_list) + len(sell_list) + len(hold_list),
+                "buy_count": len(buy_list),
+                "sell_count": len(sell_list),
+                "hold_count": len(hold_list),
+                "data_issue_count": len(data_issues),
+            },
+            "timestamp": datetime.now().isoformat(),
+        })
+
     @app.route('/signals/history', methods=['GET'])
     def signal_history():
         factor_name = request.args.get('factor')
@@ -328,6 +392,60 @@ def create_app(settings=None):
         days = int(request.args.get('days', 365))
         min_samples = int(request.args.get('min_samples', 3))
         return jsonify(trigger_backtest(chains_config, data_bus, signal_logger, days=days, min_samples=min_samples))
+
+    @app.route('/recommendation_backtest', methods=['GET'])
+    def recommendation_backtest_endpoint():
+        """建议有效性验证：评估买入/卖出/观望建议的历史表现。
+
+        口径：
+        - 买入建议后 1/5/10/20 日收益
+        - 卖出建议后 1/5/10/20 日方向是否正确
+        - HOLD 后波动是否收敛
+        - 不做账户净值、不做持仓模拟
+        """
+        runner.ensure_imported()
+        days = int(request.args.get('days', 365))
+        min_samples = int(request.args.get('min_samples', 3))
+
+        # Run trigger backtest
+        bt_result = trigger_backtest(chains_config, data_bus, signal_logger, days=days, min_samples=min_samples)
+
+        # Reformat into recommendation language
+        triggers = bt_result.get("triggers", {})
+        buy_eval = []
+        sell_eval = []
+
+        for name, stats in triggers.items():
+            if stats.get("insufficient_samples"):
+                continue
+            direction = "BUY" if "buy" in name.lower() else ("SELL" if "sell" in name.lower() else "HOLD")
+            entry = {
+                "trigger": name,
+                "count": stats.get("count", 0),
+                "asset": stats.get("asset", ""),
+                "description": stats.get("description", ""),
+                "returns": {},
+            }
+            for h in [1, 5, 10, 20]:
+                avg_key = f"avg_fwd_{h}d"
+                wr_key = f"win_rate_fwd_{h}d"
+                if stats.get(avg_key) is not None:
+                    entry["returns"][f"{h}d"] = {
+                        "avg_return": stats[avg_key],
+                        "win_rate": stats.get(wr_key),
+                    }
+            if direction == "BUY":
+                buy_eval.append(entry)
+            else:
+                sell_eval.append(entry)
+
+        return jsonify({
+            "summary": bt_result.get("summary", {}),
+            "buy_recommendations": buy_eval,
+            "sell_recommendations": sell_eval,
+            "note": "建议有效性验证口径: 不做账户净值、不做持仓模拟",
+            "timestamp": datetime.now().isoformat(),
+        })
 
     @app.route('/push/<chain_name>', methods=['GET'])
     def push_chain(chain_name):

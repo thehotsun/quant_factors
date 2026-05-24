@@ -928,6 +928,55 @@ setInterval(() => {
 }, 300000);
 ```
 
+## 纯净建议机（Recommendation Engine）
+
+系统提供纯净的买入/卖出/观望建议输出层，不涉及真实交易、持仓或账户系统。
+
+### 建议输出结构 (RecommendationV1)
+
+```json
+{
+  "recommendation": "BUY",
+  "label": "建议买入",
+  "strength": 0.45,
+  "confidence": 0.65,
+  "reason": "生猪价格历史低位(z=-1.5); 饲料成本下降3%",
+  "risk_notes": ["猪肉现货数据过期(7天)，建议置信度已降低"],
+  "data_notes": ["数据过期: pork_spot 已过期 7 天"],
+  "conflict_notes": [],
+  "drivers_used": ["pork_futures", "corn_futures", "breeding_etf"],
+  "missing_drivers": [],
+  "components": [
+    {"name": "pork_zscore", "value": -1.5, "type": "zscore"},
+    {"name": "feed_cost_change_20d", "value": -0.03, "type": "score"}
+  ],
+  "generated_at": "2026-05-24T11:00:00"
+}
+```
+
+### 建议 API 接口
+
+| 接口 | 说明 |
+|------|------|
+| `/recommend/<chain>` | 单链条/综合链条建议（纯净建议口径） |
+| `/signal/<chain>` | 信号详情 + `recommendation` 字段（向后兼容） |
+| `/recommendations/daily` | 每日总览：所有链条今日建议列表 |
+| `/recommendation_backtest` | 建议有效性验证回测 |
+| `/driver_health` | 数据健康详情（含新鲜度） |
+
+### 数据健康与置信度调整
+
+系统自动检测数据新鲜度：
+- **ok**: 数据在允许延迟内
+- **stale**: 数据过期（超过 max_allowed_lag）
+- **missing_known**: 已知缺失
+- **missing_unexpected**: 意外缺失
+
+置信度自动调整：
+- 过期数据 → 降低置信度 + 风险提示
+- 缺失数据 → 降低置信度
+- 严重缺失(≥2个关键驱动) → 强制 HOLD
+
 ## 常见问题
 
 ### Q: 数据文件损坏怎么办？

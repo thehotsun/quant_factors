@@ -1,7 +1,7 @@
 # 当前任务清单：纯净建议机（Recommendation Layer）
 
-**最后更新**: 2026-05-24 11:10  
-**当前阶段**: Batch 6 完成；进入 Batch 7 解释性与有效性验证  
+**最后更新**: 2026-05-24 11:30  
+**当前阶段**: Batch 7 完成；纯净建议机开发全部完成 ✅  
 **范围**: 只输出买入 / 卖出 / 观望建议，不引入真实交易记录、真实持仓或账户系统。
 
 ---
@@ -47,36 +47,28 @@
 
 ---
 
-### Batch 7：解释性与有效性验证
+### Batch 7：解释性与有效性验证 ✅
 
-- [ ] **任务 40**: 混合因子输出 `components`
-  - 例如 pork_zscore / feed_cost_change_20d / spot_change_5d / equity_momentum_20d
-  - 保留最终 `factor_value`
-  - 用于解释为什么建议买 / 卖 / 观望
+- [x] **任务 40**: 混合因子输出 components ✅
+  - 扩展 _COMPONENT_KEYS 覆盖 pork_zscore/feed_cost_change_20d/spot_change_5d/equity_momentum_20d/commodity_signal/cost_signal/equity_signal 等
 
-- [ ] **任务 41**: 聚合层输出建议解释字段
-  - `risk_notes`
-  - `conflict_notes`
-  - `driver_groups`
-  - `driver_conflicts`
-  - 把冲突度转成自然语言说明
+- [x] **任务 41**: 聚合层输出建议解释字段 ✅
+  - from_aggregated() 已输出 risk_notes/conflict_notes/driver_groups/driver_conflicts
+  - _detect_driver_conflicts() 已实现
 
-- [ ] **任务 42**: 回测保持“建议有效性验证”口径
-  - 买入建议后 1 / 5 / 10 / 20 日收益
-  - 卖出建议后 1 / 5 / 10 / 20 日方向是否正确
-  - HOLD 后波动是否收敛
+- [x] **任务 42**: 回测保持“建议有效性验证”口径 ✅
+  - 新增 /recommendation_backtest 端点
+  - 按 BUY/SELL 分组展示 1/5/10/20 日收益和胜率
   - 不做账户净值、不做持仓模拟
 
-- [ ] **任务 43**: 新增每日总览接口
-  - 今日建议买入列表
-  - 今日建议卖出列表
-  - 今日建议观望列表
-  - 数据不足 / 冲突较高列表
+- [x] **任务 43**: 新增每日总览接口 ✅
+  - /recommendations/daily: 返回所有链条今日建议列表
+  - 按 BUY/SELL/HOLD 分组 + data_issues
 
-- [ ] **任务 44**: 文档更新与回归测试
-  - README 增加“纯净建议机”说明
+- [x] **任务 44**: 文档更新与回归测试 ✅
+  - README 新增“纯净建议机”章节
   - DATA_CONTRACT_SPEC 补数据新鲜度规则
-  - 全量测试通过后 commit
+  - 全量测试: 248 passed, 0 failed
 
 ---
 

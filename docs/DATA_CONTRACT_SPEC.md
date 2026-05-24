@@ -149,6 +149,33 @@
 - 均值回归类因子的 z-score 可能被平滑过度
 - 动量/波动率类因子的真实风险可能被低估
 
+## 八、数据新鲜度规则
+
+`DataBus.get_driver_status()` 返回每个驱动数据的健康详情：
+
+| 字段 | 说明 |
+|------|------|
+| status | ok / stale / missing_known / missing_unexpected |
+| last_date | 数据最后日期 |
+| lag_days | 距今天数 |
+| expected_frequency | daily / weekly / monthly |
+| max_allowed_lag | 最大允许延迟（天） |
+| reason | 状态说明 |
+
+### 期望频率配置
+
+| 数据类型 | 频率 | 最大允许延迟 |
+|----------|------|-------------|
+| 期货/现货/股票/ETF | daily | 5 天 |
+| 周数据 (EIA) | weekly | 10 天 |
+| 月度宏观 (CPI/PMI/M2/社融) | monthly | 45 天 |
+
+### 建议置信度调整
+
+- 过期数据 → 置信度 × 0.8
+- 缺失数据 → 置信度 × 0.5
+- 严重缺失(≥2个) → 强制 HOLD，置信度 × 0.3
+
 ---
 
 *文档维护：每次新增数据源或修改换月逻辑时更新本文档。*
