@@ -80,7 +80,7 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
 from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
 from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
 from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
-from data_sources.spot import fetch_pork_spot  # noqa: E402
+from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot  # noqa: E402
 from data_sources.equity import fetch_etf_hist, fetch_stock_hist  # noqa: E402
 
 
@@ -272,6 +272,22 @@ def main():
 
     print("\n--- 暂不支持的数据 ---")
     print("  鸡肉现货(chicken_spot) - 未接入：尚未找到稳定公开历史接口；不使用网页 HTML 解析，不以白条鸡批发价冒充白羽肉鸡棚前价")
+
+    # Step 11: 贵金属现货基准价（上海金交所）
+    print("\n[Step 11] 下载现货数据（贵金属）...")
+    try:
+        gold_spot = fetch_gold_spot()
+        if gold_spot is not None:
+            save_parquet(gold_spot, "gold_spot")
+    except Exception as e:
+        print(f"  黄金现货下载失败: {e}")
+
+    try:
+        silver_spot = fetch_silver_spot()
+        if silver_spot is not None:
+            save_parquet(silver_spot, "silver_spot")
+    except Exception as e:
+        print(f"  白银现货下载失败: {e}")
 
     print("\n历史数据下载完成！")
 

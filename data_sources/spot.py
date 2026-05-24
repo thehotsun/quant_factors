@@ -3,6 +3,8 @@
 目前支持：
 - 生猪现货（pork_spot）：来自生意社 100ppi.com，通过 akshare futures_spot_price_daily 获取
 - 鸡肉现货（chicken_spot）：暂无稳定公开接口，继续 known_missing
+- 黄金现货基准价（gold_spot）：上海金交所，取早盘价作为日收盘参考
+- 白银现货基准价（silver_spot）：上海金交所，取早盘价作为日收盘参考
 """
 
 import pandas as pd
@@ -38,4 +40,62 @@ def fetch_pork_spot(start_day="20200101", end_day=None):
         return result
     except Exception as e:
         print(f"  生猪现货下载失败: {e}")
+        return None
+
+
+def fetch_gold_spot():
+    """获取黄金现货基准价（上海金交所）。
+
+    数据来源：akshare spot_golden_benchmark_sge
+    取早盘价作为日收盘参考。
+    """
+    import akshare as ak
+
+    try:
+        df = ak.spot_golden_benchmark_sge()
+        if df is None or df.empty:
+            print("  黄金现货基准价数据为空")
+            return None
+
+        result = df[["交易时间", "早盘价"]].copy()
+        result = result.rename(columns={"交易时间": "date", "早盘价": "close"})
+        result["date"] = pd.to_datetime(result["date"], errors="coerce")
+        result["close"] = pd.to_numeric(result["close"], errors="coerce")
+        result["source"] = "akshare.spot_golden_benchmark_sge.早盘价"
+        result = result.dropna(subset=["date", "close"]).sort_values("date")
+        result.reset_index(drop=True, inplace=True)
+
+        print(f"  黄金现货基准价: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        return result
+    except Exception as e:
+        print(f"  黄金现货基准价下载失败: {e}")
+        return None
+
+
+def fetch_silver_spot():
+    """获取白银现货基准价（上海金交所）。
+
+    数据来源：akshare spot_silver_benchmark_sge
+    取早盘价作为日收盘参考。
+    """
+    import akshare as ak
+
+    try:
+        df = ak.spot_silver_benchmark_sge()
+        if df is None or df.empty:
+            print("  白银现货基准价数据为空")
+            return None
+
+        result = df[["交易时间", "早盘价"]].copy()
+        result = result.rename(columns={"交易时间": "date", "早盘价": "close"})
+        result["date"] = pd.to_datetime(result["date"], errors="coerce")
+        result["close"] = pd.to_numeric(result["close"], errors="coerce")
+        result["source"] = "akshare.spot_silver_benchmark_sge.早盘价"
+        result = result.dropna(subset=["date", "close"]).sort_values("date")
+        result.reset_index(drop=True, inplace=True)
+
+        print(f"  白银现货基准价: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        return result
+    except Exception as e:
+        print(f"  白银现货基准价下载失败: {e}")
         return None

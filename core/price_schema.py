@@ -18,7 +18,8 @@ PRICE_DATA_NAMES = {
     "crude_oil_futures", "thermal_coal_futures", "copper_futures",
     "aluminum_futures", "rebar_futures", "gold_futures", "silver_futures",
     "iron_ore_futures", "natural_gas_futures", "brent_oil", "cbot_soybean",
-    "vix", "chicken_spot", "pork_spot", "breeding_etf", "gold_etf", "petrochina_stock",
+    "vix", "chicken_spot", "pork_spot", "gold_spot", "silver_spot",
+    "breeding_etf", "gold_etf", "petrochina_stock",
 }
 KNOWN_MISSING_PRICE_DATA = {"chicken_spot"}
 
@@ -36,7 +37,7 @@ DATASET_KINDS = {
     "copper_futures": "futures", "aluminum_futures": "futures", "rebar_futures": "futures",
     "gold_futures": "futures", "silver_futures": "futures", "iron_ore_futures": "futures",
     "natural_gas_futures": "futures", "brent_oil": "futures", "cbot_soybean": "futures",
-    "chicken_spot": "spot", "pork_spot": "spot",
+    "chicken_spot": "spot", "pork_spot": "spot", "gold_spot": "spot", "silver_spot": "spot",
     "vix": "macro",
     "breeding_etf": "equity", "gold_etf": "equity", "petrochina_stock": "equity",
 }

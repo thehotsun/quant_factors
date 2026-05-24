@@ -237,6 +237,7 @@ class DataBus:
         "iron_ore_futures": ("daily", 5), "natural_gas_futures": ("daily", 5),
         "brent_oil": ("daily", 5), "cbot_soybean": ("daily", 5),
         "pork_spot": ("daily", 5), "chicken_spot": ("daily", 5),
+        "gold_spot": ("daily", 5), "silver_spot": ("daily", 5),
         "breeding_etf": ("daily", 5), "gold_etf": ("daily", 5),
         "petrochina_stock": ("daily", 5),
         "vix": ("daily", 5), "usd_cny": ("daily", 5),
