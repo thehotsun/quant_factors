@@ -223,25 +223,94 @@ class DataBus:
             bundle[group] = group_data
         return bundle
 
-    def get_driver_status(self, chain_def) -> Dict[str, Dict[str, str]]:
-        """Check driver availability without loading full DataFrames.
+    # Expected data freshness: dataset -> (expected_frequency, max_allowed_lag_days)
+    _FRESHNESS_RULES: Dict[str, tuple] = {
+        # Daily futures/spot/equity: allow 5 days for weekends + holidays
+        "pork_futures": ("daily", 5), "pork_futures_far": ("daily", 5),
+        "egg_futures": ("daily", 5), "soybean_meal_futures": ("daily", 5),
+        "corn_futures": ("daily", 5), "soybean_domestic_futures": ("daily", 5),
+        "soybean_import_futures": ("daily", 5), "rapeseed_meal_futures": ("daily", 5),
+        "soybean_oil_futures": ("daily", 5), "crude_oil_futures": ("daily", 5),
+        "thermal_coal_futures": ("daily", 5), "copper_futures": ("daily", 5),
+        "aluminum_futures": ("daily", 5), "rebar_futures": ("daily", 5),
+        "gold_futures": ("daily", 5), "silver_futures": ("daily", 5),
+        "iron_ore_futures": ("daily", 5), "natural_gas_futures": ("daily", 5),
+        "brent_oil": ("daily", 5), "cbot_soybean": ("daily", 5),
+        "pork_spot": ("daily", 5), "chicken_spot": ("daily", 5),
+        "breeding_etf": ("daily", 5), "gold_etf": ("daily", 5),
+        "petrochina_stock": ("daily", 5),
+        "vix": ("daily", 5), "usd_cny": ("daily", 5),
+        "tips_yield": ("daily", 5),
+        # Weekly data
+        "eia_crude_stock": ("weekly", 10),
+        # Monthly macro data
+        "cpi": ("monthly", 45), "pmi": ("monthly", 45),
+        "m2": ("monthly", 45), "social_financing": ("monthly", 45),
+        "us_cpi": ("monthly", 45),
+    }
+
+    def get_driver_status(self, chain_def) -> Dict[str, Dict[str, Any]]:
+        """Check driver availability with data freshness details.
 
         Returns:
-            {"futures": {"pork_futures": "ok", "x": "missing_known"}, ...}
+            {"futures": {"pork_futures": {
+                "status": "ok", "last_date": "2026-05-22", "lag_days": 2,
+                "expected_frequency": "daily", "max_allowed_lag": 5, "reason": ""
+            }, ...}, ...}
         """
         from core.price_schema import KNOWN_MISSING_PRICE_DATA
+        from datetime import datetime, timedelta
         drivers = getattr(chain_def, "drivers", {}) or {}
-        status: Dict[str, Dict[str, str]] = {}
+        status: Dict[str, Dict[str, Any]] = {}
+        today = datetime.now().date()
         for group, deps in drivers.items():
-            group_status: Dict[str, str] = {}
+            group_status: Dict[str, Any] = {}
             for dep_name in (deps if isinstance(deps, list) else []):
                 path = self._data_dir / f"{dep_name}.parquet"
-                if path.exists():
-                    group_status[dep_name] = "ok"
-                elif dep_name in KNOWN_MISSING_PRICE_DATA:
-                    group_status[dep_name] = "missing_known"
+                if not path.exists():
+                    if dep_name in KNOWN_MISSING_PRICE_DATA:
+                        group_status[dep_name] = {
+                            "status": "missing_known",
+                            "last_date": None, "lag_days": None,
+                            "expected_frequency": None, "max_allowed_lag": None,
+                            "reason": f"{dep_name} 在已知缺失列表中",
+                        }
+                    else:
+                        group_status[dep_name] = {
+                            "status": "missing_unexpected",
+                            "last_date": None, "lag_days": None,
+                            "expected_frequency": None, "max_allowed_lag": None,
+                            "reason": f"{dep_name}.parquet 文件不存在",
+                        }
+                    continue
+
+                # Read last date from parquet
+                try:
+                    df = pd.read_parquet(path, columns=["date"])
+                    df["date"] = pd.to_datetime(df["date"])
+                    last_date = df["date"].max().date()
+                    lag_days = (today - last_date).days
+                except Exception:
+                    last_date = None
+                    lag_days = None
+
+                freq, max_lag = self._FRESHNESS_RULES.get(dep_name, ("daily", 5))
+
+                if lag_days is not None and lag_days > max_lag:
+                    st = "stale"
+                    reason = f"数据过期: 最后日期 {last_date}, 已过期 {lag_days} 天 (允许 {max_lag} 天)"
                 else:
-                    group_status[dep_name] = "missing_unexpected"
+                    st = "ok"
+                    reason = ""
+
+                group_status[dep_name] = {
+                    "status": st,
+                    "last_date": str(last_date) if last_date else None,
+                    "lag_days": lag_days,
+                    "expected_frequency": freq,
+                    "max_allowed_lag": max_lag,
+                    "reason": reason,
+                }
             status[group] = group_status
         return status
 

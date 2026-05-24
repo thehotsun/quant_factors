@@ -70,8 +70,8 @@ class DataBusDriverMethodsTest(unittest.TestCase):
             })["test"]
 
             status = bus.get_driver_status(chain_def)
-            self.assertEqual(status["futures"]["pork_futures"], "missing_unexpected")
-            self.assertEqual(status["spot"]["chicken_spot"], "missing_known")
+            self.assertEqual(status["futures"]["pork_futures"]["status"], "missing_unexpected")
+            self.assertEqual(status["spot"]["chicken_spot"]["status"], "missing_known")
 
 
 class MixedDriverFactorTest(unittest.TestCase):

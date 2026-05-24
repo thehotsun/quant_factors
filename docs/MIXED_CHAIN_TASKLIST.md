@@ -1,7 +1,7 @@
 # 当前任务清单：纯净建议机（Recommendation Layer）
 
-**最后更新**: 2026-05-24 11:00  
-**当前阶段**: Batch 5 完成；进入 Batch 6 数据新鲜度  
+**最后更新**: 2026-05-24 11:10  
+**当前阶段**: Batch 6 完成；进入 Batch 7 解释性与有效性验证  
 **范围**: 只输出买入 / 卖出 / 观望建议，不引入真实交易记录、真实持仓或账户系统。
 
 ---
@@ -30,25 +30,20 @@
 
 ---
 
-### Batch 6：数据新鲜度与建议可信度
+### Batch 6：数据新鲜度与建议可信度 ✅
 
-- [ ] **任务 37**: 升级 `DataBus.get_driver_status()` 为数据健康详情
-  - `status`: ok / stale / missing_known / missing_unexpected
-  - `last_date`
-  - `lag_days`
-  - `expected_frequency`
-  - `max_allowed_lag`
-  - `reason`
+- [x] **任务 37**: 升级 `DataBus.get_driver_status()` 为数据健康详情 ✅
+  - 新增 status: ok / stale / missing_known / missing_unexpected
+  - 新增 last_date, lag_days, expected_frequency, max_allowed_lag, reason
+  - _FRESHNESS_RULES 定义每个数据集的期望频率和最大允许延迟
 
-- [ ] **任务 38**: `driver_health` API 返回数据新鲜度
-  - 全局 `/driver_health`
-  - 单链 `/driver_health/<chain_name>`
-  - 标记 stale 数据
+- [x] **任务 38**: `driver_health` API 返回数据新鲜度 ✅
+  - API 自动适配新格式，无需修改路由
 
-- [ ] **任务 39**: RecommendationEngine 根据数据健康调整建议
+- [x] **任务 39**: RecommendationEngine 根据数据健康调整建议 ✅
   - 缺失关键数据：降低 confidence
   - 数据过期：增加 data_notes / risk_notes
-  - 关键驱动严重缺失：允许输出 HOLD / 建议观望
+  - 关键驱动严重缺失(>=2)：强制 HOLD
 
 ---
 

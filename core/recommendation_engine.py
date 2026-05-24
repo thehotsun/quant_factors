@@ -85,6 +85,32 @@ class RecommendationEngine:
     """
 
     @staticmethod
+    def _adjust_for_data_health(rec: Dict[str, Any], missing_deps: List[str],
+                                stale_deps: List[tuple]) -> Dict[str, Any]:
+        """Adjust recommendation based on data health.
+
+        - Missing critical data: lower confidence
+        - Stale data: lower confidence
+        - Severe missing (>=2 critical deps): force HOLD
+        """
+        severity = len(missing_deps) + len(stale_deps) * 0.5
+
+        if severity >= 2.0:
+            # Severe: force HOLD
+            rec["recommendation"] = "HOLD"
+            rec["label"] = "建议观望"
+            rec["confidence"] = round(max(0.1, rec["confidence"] * 0.3), 4)
+            rec["risk_notes"].append("关键驱动数据严重缺失或过期，强制观望")
+        elif severity >= 1.0:
+            # Moderate: lower confidence
+            rec["confidence"] = round(max(0.1, rec["confidence"] * 0.5), 4)
+        elif severity > 0:
+            # Mild: slight confidence reduction
+            rec["confidence"] = round(max(0.1, rec["confidence"] * 0.8), 4)
+
+        return rec
+
+    @staticmethod
     def from_signal(signal_result: Dict[str, Any]) -> Dict[str, Any]:
         """Build a RecommendationV1 from a single-chain signal result.
 
@@ -148,20 +174,49 @@ class RecommendationEngine:
         chain_meta = signal_result.get("chain_meta") or {}
         drivers_used = []
         missing_drivers = []
+        stale_deps = []
         if chain_meta:
             drivers_used = list(chain_meta.get("drivers", {}).keys()) if isinstance(chain_meta.get("drivers"), dict) else []
             driver_health = chain_meta.get("driver_health", {})
             if isinstance(driver_health, dict):
+                stale_deps = []
                 for group, statuses in driver_health.items():
                     if isinstance(statuses, dict):
-                        for dep, status in statuses.items():
-                            if status == "ok":
+                        for dep, info in statuses.items():
+                            # Handle both old format (string) and new format (dict)
+                            if isinstance(info, str):
+                                st = info
+                                lag = None
+                            else:
+                                st = info.get("status", "ok") if isinstance(info, dict) else "ok"
+                                lag = info.get("lag_days") if isinstance(info, dict) else None
+
+                            if st == "ok":
                                 if dep not in drivers_used:
                                     drivers_used.append(dep)
-                            elif status.startswith("missing"):
+                                # Check freshness even for "ok" if lag is significant
+                                if lag is not None and lag > 5:
+                                    stale_deps.append((dep, lag))
+                            elif st == "stale":
+                                stale_deps.append((dep, lag))
+                                if dep not in drivers_used:
+                                    drivers_used.append(dep)
+                            elif st.startswith("missing"):
                                 missing_drivers.append(dep)
-                                if dep not in [n.split(":")[-1].strip() for n in data_notes]:
-                                    data_notes.append(f"数据缺失: {dep} ({status})")
+                                reason = info.get("reason", st) if isinstance(info, dict) else st
+
+                # Stale data notes
+                for dep, lag in stale_deps:
+                    data_notes.append(f"数据过期: {dep} 已过期 {lag} 天")
+                    risk_notes.append(f"{dep} 数据过期({lag}天)，建议置信度已降低")
+
+                # Missing data notes
+                for dep in missing_drivers:
+                    data_notes.append(f"数据缺失: {dep}")
+
+                # Severe missing: lower confidence
+                if missing_drivers:
+                    risk_notes.append(f"缺失关键驱动数据({', '.join(missing_drivers)})，建议置信度已降低")
 
         # Factor data components for transparency
         components = []
@@ -187,7 +242,7 @@ class RecommendationEngine:
                     except (TypeError, ValueError):
                         pass
 
-        return make_recommendation(
+        rec = make_recommendation(
             recommendation=direction,
             strength=strength,
             confidence=confidence,
@@ -200,6 +255,10 @@ class RecommendationEngine:
             components=components,
             chain_meta=chain_meta,
         )
+
+        # Adjust recommendation based on data health
+        rec = RecommendationEngine._adjust_for_data_health(rec, missing_drivers, stale_deps)
+        return rec
 
     @staticmethod
     def from_aggregated(aggregated: Dict[str, Any], chain_meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
