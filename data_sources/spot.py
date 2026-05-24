@@ -47,7 +47,7 @@ def fetch_gold_spot():
     """获取黄金现货基准价（上海金交所）。
 
     数据来源：akshare spot_golden_benchmark_sge
-    取早盘价作为日收盘参考。
+    取晚盘价作为日收盘参考（晚盘收盘更晚，是当日最后交易价格）。
     """
     import akshare as ak
 
@@ -57,11 +57,11 @@ def fetch_gold_spot():
             print("  黄金现货基准价数据为空")
             return None
 
-        result = df[["交易时间", "早盘价"]].copy()
-        result = result.rename(columns={"交易时间": "date", "早盘价": "close"})
+        result = df[["交易时间", "晚盘价"]].copy()
+        result = result.rename(columns={"交易时间": "date", "晚盘价": "close"})
         result["date"] = pd.to_datetime(result["date"], errors="coerce")
         result["close"] = pd.to_numeric(result["close"], errors="coerce")
-        result["source"] = "akshare.spot_golden_benchmark_sge.早盘价"
+        result["source"] = "akshare.spot_golden_benchmark_sge.晚盘价"
         result = result.dropna(subset=["date", "close"]).sort_values("date")
         result.reset_index(drop=True, inplace=True)
 
@@ -76,7 +76,7 @@ def fetch_silver_spot():
     """获取白银现货基准价（上海金交所）。
 
     数据来源：akshare spot_silver_benchmark_sge
-    取早盘价作为日收盘参考。
+    取晚盘价作为日收盘参考（晚盘收盘更晚，是当日最后交易价格）。
     """
     import akshare as ak
 
@@ -86,11 +86,11 @@ def fetch_silver_spot():
             print("  白银现货基准价数据为空")
             return None
 
-        result = df[["交易时间", "早盘价"]].copy()
-        result = result.rename(columns={"交易时间": "date", "早盘价": "close"})
+        result = df[["交易时间", "晚盘价"]].copy()
+        result = result.rename(columns={"交易时间": "date", "晚盘价": "close"})
         result["date"] = pd.to_datetime(result["date"], errors="coerce")
         result["close"] = pd.to_numeric(result["close"], errors="coerce")
-        result["source"] = "akshare.spot_silver_benchmark_sge.早盘价"
+        result["source"] = "akshare.spot_silver_benchmark_sge.晚盘价"
         result = result.dropna(subset=["date", "close"]).sort_values("date")
         result.reset_index(drop=True, inplace=True)
 

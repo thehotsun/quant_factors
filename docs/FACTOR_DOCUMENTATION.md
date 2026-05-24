@@ -12,8 +12,8 @@
 | 品种 | 数据名 | 来源 | 接口 | 数据格式 | 历史深度 |
 |------|--------|------|------|----------|----------|
 | 生猪现货 | `pork_spot` | 生意社(100ppi.com) | `futures_spot_price_daily` | date + close | 2024年起 |
-| 黄金现货基准价 | `gold_spot` | 上海金交所(SGE) | `spot_golden_benchmark_sge` | date + close(早盘价) | 2016年起 |
-| 白银现货基准价 | `silver_spot` | 上海金交所(SGE) | `spot_silver_benchmark_sge` | date + close(早盘价) | 2019年起 |
+| 黄金现货基准价 | `gold_spot` | 上海金交所(SGE) | `spot_golden_benchmark_sge` | date + close(晚盘价) | 2016年起 |
+| 白银现货基准价 | `silver_spot` | 上海金交所(SGE) | `spot_silver_benchmark_sge` | date + close(晚盘价) | 2019年起 |
 | 铜现货 | `copper_spot` | 生意社(100ppi.com) | `futures_spot_price_daily(CU)` | date + close(spot_price) | 2020年起 |
 | 铝现货 | `aluminum_spot` | 生意社(100ppi.com) | `futures_spot_price_daily(AL)` | date + close(spot_price) | 2024年起 |
 | 螺纹钢现货 | `rebar_spot` | 生意社(100ppi.com) | `futures_spot_price_daily(RB)` | date + close(spot_price) | 2024年起 |
