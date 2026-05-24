@@ -525,12 +525,17 @@ def create_app(settings=None):
             return None
         return push_daily_composite_reports(app, chains_config, _run_composite_chain, data_bus)
 
+    def _market_alert():
+        from core.market_alert import run_market_alert_check
+        return run_market_alert_check()
+
     # 仅在非测试模式下初始化 push 和 scheduler
     if not (settings or {}).get("skip_scheduler"):
         init_push_channels()
         init_scheduler(
             _daily_data_refresh, _daily_data_refresh_foreign,
             _daily_ic_compute, _daily_push,
+            market_alert=_market_alert,
         )
 
     return app

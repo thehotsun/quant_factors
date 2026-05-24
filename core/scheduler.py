@@ -15,6 +15,7 @@ def init_scheduler(daily_data_refresh: Callable[[], None],
                    daily_data_refresh_foreign: Callable[[], None],
                    daily_ic_compute: Callable[[], None],
                    daily_push: Callable[[], None],
+                   market_alert: Callable[[], None] = None,
                    lock_path: str = "/tmp/quant_factors_scheduler.lock") -> bool:
     """Start APScheduler once across gunicorn workers.
 
@@ -50,9 +51,14 @@ def init_scheduler(daily_data_refresh: Callable[[], None],
     scheduler.add_job(daily_data_refresh_foreign, "cron", hour=6, minute=0, id="daily_refresh_foreign")
     scheduler.add_job(daily_ic_compute, "cron", hour=18, minute=30, id="daily_ic")
     scheduler.add_job(daily_push, "cron", hour=18, minute=35, id="daily_push")
+    # 盘中异动告警：每 30 分钟检查一次（日盘 + 夜盘）
+    if market_alert:
+        scheduler.add_job(market_alert, "cron",
+                         hour="9,10,11,13,14,21,22", minute="0,30",
+                         id="market_alert")
     scheduler.start()
     logger.info(
-        "APScheduler 已启动 (worker PID %d): 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送",
+        "APScheduler 已启动 (worker PID %d): 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送, 盘中异动每30分钟",
         os.getpid(),
     )
     return True
