@@ -80,7 +80,7 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
 from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
 from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
 from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
-from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot  # noqa: E402
+from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot  # noqa: E402
 from data_sources.equity import fetch_etf_hist, fetch_stock_hist  # noqa: E402
 
 
@@ -288,6 +288,31 @@ def main():
             save_parquet(silver_spot, "silver_spot")
     except Exception as e:
         print(f"  白银现货下载失败: {e}")
+
+    # Step 12: 农产品现货（生意社，接口较慢）
+    print("\n[Step 12] 下载现货数据（农产品，接口较慢请耐心等待）...")
+    try:
+        corn_spot = fetch_corn_spot(start_day="20240101")
+        if corn_spot is not None:
+            save_parquet(corn_spot, "corn_spot")
+    except Exception as e:
+        print(f"  玉米现货下载失败: {e}")
+
+    try:
+        soybean_meal_spot = fetch_soybean_meal_spot(start_day="20240101")
+        if soybean_meal_spot is not None:
+            save_parquet(soybean_meal_spot, "soybean_meal_spot")
+    except Exception as e:
+        print(f"  豆粕现货下载失败: {e}")
+
+    # Step 13: 工业品现货（生意社）
+    print("\n[Step 13] 下载现货数据（工业品）...")
+    try:
+        copper_spot = fetch_copper_spot(start_day="20200101")
+        if copper_spot is not None:
+            save_parquet(copper_spot, "copper_spot")
+    except Exception as e:
+        print(f"  铜现货下载失败: {e}")
 
     print("\n历史数据下载完成！")
 

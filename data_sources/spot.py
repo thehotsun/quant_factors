@@ -99,3 +99,51 @@ def fetch_silver_spot():
     except Exception as e:
         print(f"  白银现货基准价下载失败: {e}")
         return None
+
+
+def _fetch_spot_from_bizhi(vars_list: list, name: str, start_day: str = "20200101"):
+    """通用现货数据下载（生意社 futures_spot_price_daily）。
+
+    数据来源：akshare futures_spot_price_daily
+    取 spot_price 作为现货价格。
+    注意：该接口逐日请求，速度较慢，但只是一次性下载。
+    """
+    import akshare as ak
+    import warnings
+    warnings.filterwarnings("ignore")
+
+    try:
+        end_day = pd.Timestamp.today().strftime("%Y%m%d")
+        df = ak.futures_spot_price_daily(start_day=start_day, end_day=end_day, vars_list=vars_list)
+        if df is None or df.empty:
+            print(f"  {name}现货数据为空")
+            return None
+
+        result = df[["date", "spot_price"]].copy()
+        result = result.rename(columns={"spot_price": "close"})
+        result["date"] = pd.to_datetime(result["date"].astype(str), format="%Y%m%d", errors="coerce")
+        result["close"] = pd.to_numeric(result["close"], errors="coerce")
+        result["source"] = f"akshare.futures_spot_price_daily:{vars_list[0]}.spot_price"
+        result = result.dropna(subset=["date", "close"]).sort_values("date")
+        result.reset_index(drop=True, inplace=True)
+
+        print(f"  {name}现货: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        return result
+    except Exception as e:
+        print(f"  {name}现货下载失败: {e}")
+        return None
+
+
+def fetch_copper_spot(start_day: str = "20200101"):
+    """获取铜现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["CU"], "铜", start_day)
+
+
+def fetch_corn_spot(start_day: str = "20200101"):
+    """获取玉米现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["C"], "玉米", start_day)
+
+
+def fetch_soybean_meal_spot(start_day: str = "20200101"):
+    """获取豆粕现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["M"], "豆粕", start_day)
