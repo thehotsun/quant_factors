@@ -1,28 +1,84 @@
-"""国内期货数据源（Tushare）。"""
+"""国内期货数据源（akshare + Tushare 兼容）。"""
 
 import pandas as pd
-from core.config import get_tushare_pro
+
+# tushare ts_code → akshare 新浪主力合约代码
+_TS_TO_SINA = {
+    'LH.DCE': 'LH0',   # 生猪
+    'JD.DCE': 'JD0',   # 鸡蛋
+    'M.DCE': 'M0',     # 豆粕
+    'C.DCE': 'C0',     # 玉米
+    'A.DCE': 'A0',     # 国产大豆
+    'B.DCE': 'B0',     # 进口大豆
+    'RM.ZCE': 'RM0',   # 菜粕
+    'Y.DCE': 'Y0',     # 豆油
+    'SC.INE': 'SC0',   # 原油
+    'CU.SHF': 'CU0',   # 铜
+    'AL.SHF': 'AL0',   # 铝
+    'RB.SHF': 'RB0',   # 螺纹钢
+    'AU.SHF': 'AU0',   # 黄金
+    'AG.SHF': 'AG0',   # 白银
+    'I.DCE': 'I0',     # 铁矿石
+}
 
 
-def _pro():
-    return get_tushare_pro()
+def fetch_akshare_futures(ts_code, name, start_date="20200101"):
+    """从 akshare（新浪期货）获取主力合约日线数据。
 
+    返回与旧 tushare 格式兼容的 DataFrame，包含:
+    date, open, high, low, close, settle, volume, open_interest 列。
+    """
+    import akshare as ak
 
-def fetch_tushare_futures(ts_code, name, start_date="20200101"):
-    """从 Tushare 获取期货主力合约日线数据"""
+    sina_sym = _TS_TO_SINA.get(ts_code)
+    if not sina_sym:
+        print(f"  {name} 无 akshare 映射: {ts_code}")
+        return None
+
     try:
-        df = _pro().fut_daily(ts_code=ts_code, start_date=start_date)
+        df = ak.futures_zh_daily_sina(symbol=sina_sym)
+        if df is None or df.empty:
+            print(f"  {name} akshare 数据为空")
+            return None
+
+        df = df.rename(columns={
+            'hold': 'open_interest',
+        })
+        df['date'] = pd.to_datetime(df['date'])
+        # 过滤起始日期
+        df = df[df['date'] >= pd.Timestamp(start_date)]
+        df = df.sort_values('date').reset_index(drop=True)
+        # 确保数值列
+        for col in ['open', 'high', 'low', 'close', 'settle', 'volume', 'open_interest']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
+    except Exception as e:
+        print(f"  {name} akshare下载失败: {e}")
+        return None
+
+
+# 向后兼容：保留旧函数名，默认走 akshare
+def fetch_tushare_futures(ts_code, name, start_date="20200101"):
+    """获取期货主力合约日线数据（优先 akshare，回退 tushare）。"""
+    df = fetch_akshare_futures(ts_code, name, start_date)
+    if df is not None and not df.empty:
+        return df
+
+    # 回退 tushare
+    try:
+        from core.config import get_tushare_pro
+        pro = get_tushare_pro()
+        df = pro.fut_daily(ts_code=ts_code, start_date=start_date)
         if df is not None and not df.empty:
             df = df.rename(columns={
-                'trade_date': 'date',
-                'open': 'open', 'high': 'high', 'low': 'low', 'close': 'close',
-                'vol': 'volume', 'amount': 'amount', 'oi': 'open_interest'
+                'trade_date': 'date', 'vol': 'volume', 'oi': 'open_interest'
             })
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date')
         return df
     except Exception as e:
-        print(f"  {name} 下载失败: {e}")
+        print(f"  {name} tushare回退也失败: {e}")
         return None
 
 
