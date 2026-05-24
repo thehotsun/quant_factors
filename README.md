@@ -145,6 +145,21 @@ quant_factors/
 
 无需额外配置，服务运行即自动记录。
 
+### 混合信号链架构（方案三）
+
+支持**现货 + 期货 + 股票/ETF**混合信号链，核心能力：
+
+- **ChainDefinition** 新增 `trade_asset / trade_asset_type / execution_asset / signal_target / drivers`
+- **DataBus** 按用途读价格（`get_price` / `get_driver_bundle` / `get_driver_status`）
+- **MixedDriverFactor** 基类：自动加载多类型驱动数据，输出标准化信号（含 drivers_used / missing_drivers）
+- **回测层** 自动映射 trade_asset → 正确价格数据（非 data_deps[0]）
+- **API** `/driver_health` 端点监控数据可用性
+
+样板链：
+- `pork_stock_signal`：生猪现货+期货+饲料成本 → 养殖ETF(159865)
+- `gold_etf_signal`：黄金期货+实际利率+汇率 → 黄金ETF(518880)
+- `oil_stock_signal`：原油期货+EIA库存 → 中国石油(601857)
+
 ## 因子详解
 
 ### 跨体系联动关系

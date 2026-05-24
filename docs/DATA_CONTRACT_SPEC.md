@@ -111,6 +111,15 @@
 |------|------|------|
 | `chicken_spot`（白羽肉鸡现货） | ❌ 未接入 | 无稳定公开 API；不解析 HTML，不以白条鸡批发价冒充 |
 
+### 已接入的数据源
+
+| 品种 | 来源 | 说明 |
+|------|------|------|
+| `pork_spot`（生猪现货） | akshare futures_spot_price_daily (生意社) | spot_price 字段 |
+| `breeding_etf`（养殖ETF 159865） | akshare stock_zh_a_hist_tx (腾讯行情) | 每日 OHLC |
+| `gold_etf`（黄金ETF 518880） | akshare stock_zh_a_hist_tx (腾讯行情) | 每日 OHLC |
+| `petrochina_stock`（中国石油 601857） | akshare stock_zh_a_hist_tx (腾讯行情) | 每日 OHLC |
+
 ---
 
 ## 六、价格口径选择指南

@@ -1,7 +1,7 @@
 # 方案三：现货 + 期货 + 股票/ETF 混合信号链 — 任务清单
 
-**最后更新**: 2026-05-24 09:50
-**当前阶段**: Batch 2.5 完成（数据源适配器），Batch 3/4 待用户确认
+**最后更新**: 2026-05-24 10:30
+**当前阶段**: Batch 3 完成，Batch 4（API + 推送 + 文档）待用户确认
 
 ---
 
@@ -32,9 +32,9 @@
 |------|------|------|--------|
 | Batch 1 | 架构层定型（任务 1-4） | ✅ 完成 | 585dadd |
 | Batch 2 | DataBus + 因子基类 + 样板链 + 审计（任务 8-11, 13-14, 24-25） | ✅ 完成 | 99007ed |
-| Batch 2.5 | 数据源适配器（任务 5-7） | ✅ 完成 | |
-| Batch 3 | 回测层 + 信号层升级（任务 12, 15-20） | ⏸ 待确认 | |
-| Batch 4 | 实际数据接入 + API + 推送（任务 21-23, 26-29） | ⏸ 待确认 | |
+| Batch 2.5 | 数据源适配器（任务 5-7） | ✅ 完成 | 6875c64, 7713d36 |
+| Batch 3 | 回测层 + 信号层升级（任务 12, 15-20） | ✅ 完成 | b391895, 7623c2d, ffc543e, f5070e8 |
+| Batch 4 | API + 推送（任务 21-23, 30-32） | ⏸ 待确认 | |
 
 ---
 
@@ -62,21 +62,21 @@
 ### 阶段四：因子层迁移
 
 - [x] **任务 11**: 定义混合因子基类 `factors/mixed/base.py` — MixedDriverFactor
-- [ ] **任务 12**: 迁移 `pig_chicken_spread` 使用 MixedDriverFactor
+- [x] **任务 12**: 迁移 `pig_chicken_spread` 使用 MixedDriverFactor — commit b391895
 - [x] **任务 13**: 新增 `pork_stock_signal` 混合链
 - [x] **任务 14**: 新增 `commodity_to_equity_signal` 通用模板
 
 ### 阶段五：信号输出升级
 
-- [ ] **任务 15**: 统一信号结构 — drivers / driver_data / trade_asset
+- [x] **任务 15**: 统一信号结构 — API 返回 chain_meta — commit 7623c2d
 - [ ] **任务 16**: 升级 FactorRunner — 注入 chain_def ✅（已做，向后兼容）
-- [ ] **任务 17**: 升级 SignalAggregator — driver_groups / driver_conflicts
+- [x] **任务 17**: 升级 SignalAggregator — driver_groups / driver_conflicts — commit ffc543e
 
 ### 阶段六：回测层升级
 
-- [ ] **任务 18**: 回测支持"驱动数据 ≠ 交易标的"
-- [ ] **任务 19**: IC 监控按 trade_asset 分组
-- [ ] **任务 20**: 混合链回测测试
+- [x] **任务 18**: 回测支持混合链 — commit f5070e8"驱动数据 ≠ 交易标的"
+- [x] **任务 19**: IC 监控按 trade_asset 分组 — commit f5070e8
+- [x] **任务 20**: 混合链回测测试 — commit f5070e8
 
 ### 阶段七：API 和推送升级
 
