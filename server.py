@@ -497,18 +497,32 @@ def create_app(settings=None):
             })
         return jsonify(send_chain_push(chain_name, cfg, result, data_bus))
 
-    # ── 定时任务 ──────────────────────────────────────────────
+    # ── 定时任务（非交易日自动跳过）────────────────────────────
+
+    from core.trading_calendar import is_trading_day
 
     def _daily_data_refresh():
+        if not is_trading_day():
+            logger.info("今天 (%s) 非交易日，跳过国内数据刷新", datetime.now().date())
+            return None
         return daily_data_refresh(data_bus)
 
     def _daily_data_refresh_foreign():
+        if not is_trading_day():
+            logger.info("今天 (%s) 非交易日，跳过外盘数据刷新", datetime.now().date())
+            return None
         return daily_data_refresh_foreign(data_bus)
 
     def _daily_ic_compute():
+        if not is_trading_day():
+            logger.info("今天 (%s) 非交易日，跳过IC计算", datetime.now().date())
+            return None
         return compute_daily_ic(chains_config, data_bus, ic_monitor, runner.ensure_imported)
 
     def _daily_push():
+        if not is_trading_day():
+            logger.info("今天 (%s) 非交易日，跳过每日推送", datetime.now().date())
+            return None
         return push_daily_composite_reports(app, chains_config, _run_composite_chain, data_bus)
 
     # 仅在非测试模式下初始化 push 和 scheduler
