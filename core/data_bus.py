@@ -239,6 +239,8 @@ class DataBus:
         "pork_spot": ("daily", 5), "chicken_spot": ("daily", 5),
         "gold_spot": ("daily", 5), "silver_spot": ("daily", 5),
         "copper_spot": ("daily", 5), "corn_spot": ("daily", 5), "soybean_meal_spot": ("daily", 5),
+        "egg_spot": ("daily", 5), "soybean_oil_spot": ("daily", 5), "rapeseed_meal_spot": ("daily", 5),
+        "rebar_spot": ("daily", 5), "iron_ore_spot": ("daily", 5),
         "breeding_etf": ("daily", 5), "gold_etf": ("daily", 5),
         "petrochina_stock": ("daily", 5),
         "vix": ("daily", 5), "usd_cny": ("daily", 5),

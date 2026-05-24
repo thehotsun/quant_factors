@@ -80,7 +80,7 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
 from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
 from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
 from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
-from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot  # noqa: E402
+from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot, fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot, fetch_rebar_spot, fetch_iron_ore_spot  # noqa: E402
 from data_sources.equity import fetch_etf_hist, fetch_stock_hist  # noqa: E402
 
 
@@ -313,6 +313,43 @@ def main():
             save_parquet(copper_spot, "copper_spot")
     except Exception as e:
         print(f"  铜现货下载失败: {e}")
+
+    try:
+        rebar_spot = fetch_rebar_spot(start_day="20200101")
+        if rebar_spot is not None:
+            save_parquet(rebar_spot, "rebar_spot")
+    except Exception as e:
+        print(f"  螺纹钢现货下载失败: {e}")
+
+    try:
+        iron_ore_spot = fetch_iron_ore_spot(start_day="20200101")
+        if iron_ore_spot is not None:
+            save_parquet(iron_ore_spot, "iron_ore_spot")
+    except Exception as e:
+        print(f"  铁矿石现货下载失败: {e}")
+
+    # Step 14: 其他农产品现货（生意社）
+    print("\n[Step 14] 下载现货数据（其他农产品）...")
+    try:
+        egg_spot = fetch_egg_spot(start_day="20200101")
+        if egg_spot is not None:
+            save_parquet(egg_spot, "egg_spot")
+    except Exception as e:
+        print(f"  鸡蛋现货下载失败: {e}")
+
+    try:
+        soybean_oil_spot = fetch_soybean_oil_spot(start_day="20200101")
+        if soybean_oil_spot is not None:
+            save_parquet(soybean_oil_spot, "soybean_oil_spot")
+    except Exception as e:
+        print(f"  豆油现货下载失败: {e}")
+
+    try:
+        rapeseed_meal_spot = fetch_rapeseed_meal_spot(start_day="20200101")
+        if rapeseed_meal_spot is not None:
+            save_parquet(rapeseed_meal_spot, "rapeseed_meal_spot")
+    except Exception as e:
+        print(f"  菜粕现货下载失败: {e}")
 
     print("\n历史数据下载完成！")
 

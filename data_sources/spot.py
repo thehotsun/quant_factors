@@ -147,3 +147,28 @@ def fetch_corn_spot(start_day: str = "20200101"):
 def fetch_soybean_meal_spot(start_day: str = "20200101"):
     """获取豆粕现货价格（生意社）。"""
     return _fetch_spot_from_bizhi(["M"], "豆粕", start_day)
+
+
+def fetch_egg_spot(start_day: str = "20200101"):
+    """获取鸡蛋现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["JD"], "鸡蛋", start_day)
+
+
+def fetch_soybean_oil_spot(start_day: str = "20200101"):
+    """获取豆油现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["Y"], "豆油", start_day)
+
+
+def fetch_rapeseed_meal_spot(start_day: str = "20200101"):
+    """获取菜粕现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["RM"], "菜粕", start_day)
+
+
+def fetch_rebar_spot(start_day: str = "20200101"):
+    """获取螺纹钢现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["RB"], "螺纹钢", start_day)
+
+
+def fetch_iron_ore_spot(start_day: str = "20200101"):
+    """获取铁矿石现货价格（生意社）。"""
+    return _fetch_spot_from_bizhi(["I"], "铁矿石", start_day)
