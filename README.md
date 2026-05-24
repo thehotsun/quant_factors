@@ -162,6 +162,8 @@ quant_factors/
 
 ## 因子详解
 
+> **完整因子计算文档**: [docs/FACTOR_DOCUMENTATION.md](docs/FACTOR_DOCUMENTATION.md) — 包含所有因子的计算公式、信号规则、数据依赖、现货/期货配对映射
+
 ### 跨体系联动关系
 
 ```
