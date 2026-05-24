@@ -261,17 +261,23 @@ def _format_price_position(data_bus, data_dep: str, lookback_days: int = 250) ->
 def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> str:
     """Format composite chain results as markdown for push messages.
 
-    Delegates to core.report_formatter for the canonical structure, then
-    enriches with price context from data_bus.
+    Uses '建议口径' (recommendation format): shows 建议买入/卖出/观望
+    with reasons, data notes, and conflict notes. No trading actions.
     """
-    from core.report_formatter import format_chain_report, format_chain_report_markdown, format_trend, period_label, position_label
+    from core.report_formatter import (
+        format_chain_report, format_chain_report_markdown,
+        format_recommendation_report,
+        format_trend, period_label, position_label,
+    )
+    from core.recommendation_engine import RecommendationEngine
 
-    report = format_chain_report(composite_results)
+    aggregated = composite_results.get("aggregated_signal")
+    chain_name = composite_results.get("chain", "")
+    description = composite_results.get("description", "")
 
-    # Build price context if data_bus is available
+    # Build price context
     price_context = []
     if data_bus is not None:
-        chain_name = composite_results.get("chain", "")
         key_assets = _KEY_ASSETS.get(chain_name, [])
         for data_dep, label in key_assets:
             prices = _get_price_trend(data_bus, data_dep)
@@ -286,7 +292,15 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
             if trend_str:
                 price_context.append({"label": label, "trend": trend_str, "position": pos_str})
 
-    return format_chain_report_markdown(report, price_context=price_context or None)
+    if aggregated:
+        rec = RecommendationEngine.from_aggregated(aggregated)
+        return format_recommendation_report(
+            rec, chain_name=chain_name, description=description,
+            price_context=price_context or None,
+        )
+    else:
+        report = format_chain_report(composite_results)
+        return format_chain_report_markdown(report, price_context=price_context or None)
 
 
 _push_manager: Optional[PushManager] = None

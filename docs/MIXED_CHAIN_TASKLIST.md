@@ -1,143 +1,101 @@
-# 方案三：现货 + 期货 + 股票/ETF 混合信号链 — 任务清单
+# 当前任务清单：纯净建议机（Recommendation Layer）
 
-**最后更新**: 2026-05-24 10:30
-**当前阶段**: Batch 3 完成，Batch 4（API + 推送 + 文档）待用户确认
-
----
-
-## 当前状态基线
-
-已完成：
-
-1. `ChainDefinition` 支持 `trade_asset / trade_asset_type / execution_asset / signal_target / drivers`
-2. `chains.yaml` 56 条链（含 3 条新混合链）全部使用新结构
-3. `price_schema` 支持 `get_data_kind()` 区分 futures / spot / equity / macro
-4. `DataBus` 元数据带 `data_kind` / `price_role`，支持 `get_price()` / `get_driver_bundle()` / `get_driver_status()`
-5. 混合因子基类 `MixedDriverFactor` 已就绪
-6. 3 条样板混合链：`pork_stock_signal` / `gold_etf_signal` / `oil_stock_signal`
-7. 通用模板因子 `CommodityToEquitySignal`
-8. 链条配置校验器 `scripts/validate_chain_schema.py`
-9. 审计器支持 known_missing 分类
-10. 全量 210 测试通过
-11. 现货数据源适配器 `data_sources/spot.py` — fetch_pork_spot()
-12. 股票/ETF 数据源适配器 `data_sources/equity.py` — fetch_etf_hist() + fetch_stock_hist()
-13. download_history.py 编排新数据源（生猪现货 + 3 个股票/ETF）
-14. KNOWN_MISSING_PRICE_DATA 精简至 chicken_spot
+**最后更新**: 2026-05-24 11:00  
+**当前阶段**: Batch 5 完成；进入 Batch 6 数据新鲜度  
+**范围**: 只输出买入 / 卖出 / 观望建议，不引入真实交易记录、真实持仓或账户系统。
 
 ---
 
-## 进度总览
+## 已完成基线
 
-| 批次 | 任务 | 状态 | commit |
-|------|------|------|--------|
-| Batch 1 | 架构层定型（任务 1-4） | ✅ 完成 | 585dadd |
-| Batch 2 | DataBus + 因子基类 + 样板链 + 审计（任务 8-11, 13-14, 24-25） | ✅ 完成 | 99007ed |
-| Batch 2.5 | 数据源适配器（任务 5-7） | ✅ 完成 | 6875c64, 7713d36 |
-| Batch 3 | 回测层 + 信号层升级（任务 12, 15-20） | ✅ 完成 | b391895, 7623c2d, ffc543e, f5070e8 |
-| Batch 4 | API + 推送（任务 21-23, 30-32） | ⏸ 待确认 | |
+方案三「现货 + 期货 + 股票/ETF 混合信号链」已完成：
 
----
-
-## 任务清单
-
-### 阶段一：链条架构定型
-
-- [x] **任务 1**: 统一 `chains.yaml` 新结构 — 56 条链全部迁移
-- [x] **任务 2**: 扩展 `ChainDefinition` — 新增 trade_asset_type / execution_asset / signal_target
-- [x] **任务 3**: 新增链条配置校验器 `scripts/validate_chain_schema.py`
-- [x] **任务 4**: 完善 `DATASET_KINDS` — futures / spot / equity / macro / unknown
-
-### 阶段二：数据源层升级
-
-- [x] **任务 5**: 建立现货数据源适配器目录 `data_sources/spot.py` — fetch_pork_spot()
-- [x] **任务 6**: 建立权益/ETF 数据源适配器 `data_sources/equity.py` — fetch_etf_hist() + fetch_stock_hist()
-- [x] **任务 7**: 统一 `save_parquet()` 对不同数据类型的处理 — 已通过 _normalize_history_frame + normalize_price_frame 自动处理
-
-### 阶段三：DataBus 强化
-
-- [x] **任务 8**: `DataBus.get_price()` — 按用途读价格（raw/adjusted/return_raw/return_adj）
-- [x] **任务 9**: `DataBus.get_driver_bundle()` — 按链条一次性取出所有驱动数据
-- [x] **任务 10**: `DataBus.get_driver_status()` — 检查驱动数据可用性
-
-### 阶段四：因子层迁移
-
-- [x] **任务 11**: 定义混合因子基类 `factors/mixed/base.py` — MixedDriverFactor
-- [x] **任务 12**: 迁移 `pig_chicken_spread` 使用 MixedDriverFactor — commit b391895
-- [x] **任务 13**: 新增 `pork_stock_signal` 混合链
-- [x] **任务 14**: 新增 `commodity_to_equity_signal` 通用模板
-
-### 阶段五：信号输出升级
-
-- [x] **任务 15**: 统一信号结构 — API 返回 chain_meta — commit 7623c2d
-- [ ] **任务 16**: 升级 FactorRunner — 注入 chain_def ✅（已做，向后兼容）
-- [x] **任务 17**: 升级 SignalAggregator — driver_groups / driver_conflicts — commit ffc543e
-
-### 阶段六：回测层升级
-
-- [x] **任务 18**: 回测支持混合链 — commit f5070e8"驱动数据 ≠ 交易标的"
-- [x] **任务 19**: IC 监控按 trade_asset 分组 — commit f5070e8
-- [x] **任务 20**: 混合链回测测试 — commit f5070e8
-
-### 阶段七：API 和推送升级
-
-- [ ] **任务 21**: API 返回 mixed chain 元信息（trade_asset / drivers / driver_health）
-- [ ] **任务 22**: API 增加 driver health 状态
-- [ ] **任务 23**: 推送格式升级 — 展示驱动和风险
-
-### 阶段八：审计和安全
-
-- [x] **任务 24**: 升级 `audit_chains.py` — 检查 drivers / trade_asset / known_missing
-- [x] **任务 25**: 禁止现货假数据固化 — PRICE_DATA_NAMES / KNOWN_MISSING_PRICE_DATA
-
-### 阶段九：补第一批可跑链条
-
-- [ ] **任务 26**: 接入养殖 ETF 数据（159865）
-- [ ] **任务 27**: `pork_stock_signal` 实际可跑（需 breeding_etf 数据）
-- [ ] **任务 28**: `gold_etf_signal` 实际可跑（需 gold_etf 数据）
-- [ ] **任务 29**: `oil_stock_signal` 实际可跑（需 petrochina_stock 数据）
-
-### 阶段十：文档和回归
-
-- [ ] **任务 30**: 更新 README — 解释新架构
-- [ ] **任务 31**: 更新 DATA_CONTRACT_SPEC — 所有数据源口径
-- [ ] **任务 32**: 全量测试回归
+- 56 条链已迁移到新结构
+- DataBus 支持多驱动读取与健康状态
+- MixedDriverFactor 与 3 条混合链已接入
+- 现货、股票、ETF 数据源已接入
+- 回测层、IC、API、推送、文档均已适配混合链
+- 最新全量测试：211 passed
 
 ---
 
-## 已完成的关键文件
+## 当前待办
 
-| 文件 | 说明 |
-|------|------|
-| `core/chain_config.py` | ChainDefinition 新增 trade_asset / drivers 等字段 |
-| `core/price_schema.py` | DATASET_KINDS / get_data_kind() / KNOWN_MISSING_PRICE_DATA |
-| `core/data_bus.py` | get_price() / get_driver_bundle() / get_driver_status() |
-| `core/factor_runner.py` | 向后兼容注入 chain_def |
-| `factors/mixed/base.py` | MixedDriverFactor 基类 |
-| `factors/mixed/pork_stock_signal.py` | 生猪→养殖ETF 混合信号因子 |
-| `factors/mixed/commodity_to_equity.py` | 通用商品→股票模板因子 |
-| `config/chains.yaml` | 56 条链，含 3 条新混合链 |
-| `scripts/validate_chain_schema.py` | 链条配置校验器 |
-| `scripts/audit_chains.py` | 审计器支持 known_missing |
-| `data_sources/spot.py` | 现货数据源适配器（生猪现货） |
-| `data_sources/equity.py` | 股票/ETF 数据源适配器 |
-| `docs/MIXED_CHAIN_TASKLIST.md` | 本文档 |
+### Batch 5：RecommendationV1 输出定型 ✅
+
+- [x] **任务 33**: 定义 `RecommendationV1` 标准输出结构 ✅
+- [x] **任务 34**: 新增 `core/recommendation_engine.py` ✅
+- [x] **任务 35**: API 增加建议接口 (`/recommend/<chain>` + `/signal/<chain>` 新增 `recommendation` 字段) ✅
+- [x] **任务 36**: 推送格式切换为“建议口径” ✅
 
 ---
 
-## 明天新 Session 启动指南
+### Batch 6：数据新鲜度与建议可信度
 
-1. 读此文档确认当前进度
-2. 检查最新 commit：`git log --oneline -5`
-3. 确认是否执行 Batch 3（回测层）/ Batch 4（数据源接入）
-4. 如有新需求，更新此文档后执行
-5. 所有任务以此文档为准
+- [ ] **任务 37**: 升级 `DataBus.get_driver_status()` 为数据健康详情
+  - `status`: ok / stale / missing_known / missing_unexpected
+  - `last_date`
+  - `lag_days`
+  - `expected_frequency`
+  - `max_allowed_lag`
+  - `reason`
+
+- [ ] **任务 38**: `driver_health` API 返回数据新鲜度
+  - 全局 `/driver_health`
+  - 单链 `/driver_health/<chain_name>`
+  - 标记 stale 数据
+
+- [ ] **任务 39**: RecommendationEngine 根据数据健康调整建议
+  - 缺失关键数据：降低 confidence
+  - 数据过期：增加 data_notes / risk_notes
+  - 关键驱动严重缺失：允许输出 HOLD / 建议观望
 
 ---
 
-## 关键约束
+### Batch 7：解释性与有效性验证
 
-1. **不解析 HTML** — 没有稳定接口的数据继续 known missing
-2. **不冒充口径** — 不用白条鸡批发价冒充白羽肉鸡棚前价
-3. **向后兼容** — 旧因子代码不受影响
-4. **分批测试** — 每批跑全量测试后 commit
-5. **文档为准** — 所有任务进度以此文档为准
+- [ ] **任务 40**: 混合因子输出 `components`
+  - 例如 pork_zscore / feed_cost_change_20d / spot_change_5d / equity_momentum_20d
+  - 保留最终 `factor_value`
+  - 用于解释为什么建议买 / 卖 / 观望
+
+- [ ] **任务 41**: 聚合层输出建议解释字段
+  - `risk_notes`
+  - `conflict_notes`
+  - `driver_groups`
+  - `driver_conflicts`
+  - 把冲突度转成自然语言说明
+
+- [ ] **任务 42**: 回测保持“建议有效性验证”口径
+  - 买入建议后 1 / 5 / 10 / 20 日收益
+  - 卖出建议后 1 / 5 / 10 / 20 日方向是否正确
+  - HOLD 后波动是否收敛
+  - 不做账户净值、不做持仓模拟
+
+- [ ] **任务 43**: 新增每日总览接口
+  - 今日建议买入列表
+  - 今日建议卖出列表
+  - 今日建议观望列表
+  - 数据不足 / 冲突较高列表
+
+- [ ] **任务 44**: 文档更新与回归测试
+  - README 增加“纯净建议机”说明
+  - DATA_CONTRACT_SPEC 补数据新鲜度规则
+  - 全量测试通过后 commit
+
+---
+
+## 执行约束
+
+1. 不解析 HTML；没有稳定接口的数据继续 known missing
+2. 不冒充口径；不使用替代数据伪装真实口径
+3. 保持向后兼容；旧 API / 旧 signal 字段不能破坏
+4. 分批执行；每批完成后跑全量测试
+5. 每批测试通过后 commit，commit 信息写清楚
+6. 不引入交易账户、真实持仓、OPEN / CLOSE / ADD / REDUCE 等交易动作
+
+---
+
+## 下一步建议
+
+从 **Batch 5** 开始：先实现 `RecommendationV1` 和 `core/recommendation_engine.py`，再决定 API 采用新增接口还是在现有 `/signal/<chain>` 中附加字段。

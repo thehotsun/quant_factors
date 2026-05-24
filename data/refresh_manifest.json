@@ -1,7 +1,7 @@
 {
   "job": "daily_foreign",
-  "started_at": "2026-05-23T06:43:33.887054",
-  "ended_at": "2026-05-23T06:43:43.472718",
+  "started_at": "2026-05-24T06:24:28.431065",
+  "ended_at": "2026-05-24T06:24:34.272215",
   "summary": {
     "total": 7,
     "success": 7,
@@ -16,8 +16,8 @@
       "status": "success",
       "wrote": true,
       "error": null,
-      "rows": 2580,
-      "min_date": "2016-05-23",
+      "rows": 2579,
+      "min_date": "2016-05-24",
       "max_date": "2026-05-22",
       "columns": [
         "date",
@@ -37,8 +37,8 @@
       "status": "success",
       "wrote": true,
       "error": null,
-      "rows": 2545,
-      "min_date": "2016-05-23",
+      "rows": 2544,
+      "min_date": "2016-05-24",
       "max_date": "2026-05-22",
       "columns": [
         "date",

@@ -12,9 +12,16 @@ from typing import Any, Dict, List, Optional
 
 DIRECTION_EMOJI = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⚪"}
 
+REC_EMOJI = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⚪"}
+REC_VERB = {"BUY": "建议买入", "SELL": "建议卖出", "HOLD": "建议观望"}
+
 
 def direction_emoji(direction: str) -> str:
     return DIRECTION_EMOJI.get(direction, "⚪")
+
+
+def recommendation_emoji(rec: str) -> str:
+    return REC_EMOJI.get(rec, "⚪")
 
 
 def position_label(percentile: float) -> str:
@@ -173,5 +180,95 @@ def format_chain_report_markdown(report: Dict[str, Any], price_context: List[Dic
         lines.append("**⚠️ 异常:**")
         for e in errors:
             lines.append(f"- {e['chain']}: {e['error']}")
+
+    return "\n".join(lines)
+
+
+def format_recommendation_report(recommendation: Dict[str, Any], chain_name: str = "",
+                                  description: str = "", price_context: List[Dict[str, Any]] = None) -> str:
+    """Render a RecommendationV1 to markdown for push messages.
+
+    Uses '建议口径': 建议买入/卖出/观望, no trading actions or positions.
+    """
+    lines = []
+
+    rec = recommendation.get("recommendation", "HOLD")
+    label = recommendation.get("label", "建议观望")
+    emoji = recommendation_emoji(rec)
+    strength = recommendation.get("strength", 0)
+    confidence = recommendation.get("confidence", 0)
+    reason = recommendation.get("reason", "")
+
+    if chain_name:
+        lines.append(f"**{chain_name}**")
+    if description:
+        lines.append(f"_{description}_")
+    lines.append("")
+
+    # Main recommendation
+    lines.append(f"{emoji} **{label}** | 强度: {strength:.2f} | 置信度: {confidence:.2f}")
+    if reason:
+        lines.append(f"📌 原因: {reason}")
+    lines.append("")
+
+    # Price context
+    if price_context:
+        lines.append("📊 **近5日价格:**")
+        for item in price_context:
+            p_label = item.get("label", "")
+            trend = item.get("trend", "")
+            position = item.get("position", "")
+            line = f"- {p_label}: {trend}"
+            if position:
+                line += f"\n  {position}"
+            lines.append(line)
+        lines.append("")
+
+    # Components (top signals)
+    components = recommendation.get("components", [])
+    if components:
+        lines.append("📎 **信号组成:**")
+        for comp in components[:8]:
+            trigger = comp.get("trigger", comp.get("name", ""))
+            comp_dir = comp.get("direction", "")
+            comp_str = comp.get("strength", 0)
+            if trigger and comp_dir:
+                comp_emoji = direction_emoji(comp_dir)
+                lines.append(f"- {comp_emoji} {trigger} ({comp_dir}, 强度{comp_str:.2f})")
+            elif trigger:
+                lines.append(f"- {trigger}: {comp.get('value', '')}")
+        lines.append("")
+
+    # Drivers
+    drivers_used = recommendation.get("drivers_used", [])
+    missing = recommendation.get("missing_drivers", [])
+    if drivers_used:
+        lines.append(f"📎 驱动: {', '.join(drivers_used)}")
+    if missing:
+        lines.append(f"⚠️ 缺失驱动: {', '.join(missing)}")
+
+    # Data notes
+    data_notes = recommendation.get("data_notes", [])
+    if data_notes:
+        lines.append("")
+        lines.append("📋 **数据说明:**")
+        for note in data_notes:
+            lines.append(f"- {note}")
+
+    # Conflict notes
+    conflict_notes = recommendation.get("conflict_notes", [])
+    if conflict_notes:
+        lines.append("")
+        lines.append("⚡ **信号冲突:**")
+        for note in conflict_notes:
+            lines.append(f"- {note}")
+
+    # Risk notes
+    risk_notes = recommendation.get("risk_notes", [])
+    if risk_notes:
+        lines.append("")
+        lines.append("⚠️ **风险提示:**")
+        for note in risk_notes:
+            lines.append(f"- {note}")
 
     return "\n".join(lines)

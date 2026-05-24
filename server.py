@@ -10,6 +10,7 @@ from core.ic_service import compute_daily_ic
 from core.push_service import send_chain_push, push_daily_composite_reports
 from core.chain_config import build_chain_definitions, check_metadata_consistency
 from evaluation.trigger_backtest import trigger_backtest, format_trigger_report
+from core.recommendation_engine import RecommendationEngine
 
 from core.factor_registry import FactorRegistry
 from core.data_bus import DataBus
@@ -180,12 +181,61 @@ def create_app(settings=None):
             return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
         if result.get("error"):
             return jsonify({"error": result["error"], "error_type": result.get("error_type", "")}), 500
+        # 向后兼容：新增 recommendation 字段
+        chain_meta = runner._chain_meta(chain_name)
+        rec = RecommendationEngine.from_signal({
+            **result,
+            "chain_meta": chain_meta,
+        })
         return jsonify({
             "chain": chain_name,
             "signal": result.get("signal"),
             "signal_strength": result.get("signal_strength"),
-            "chain_meta": runner._chain_meta(chain_name),
+            "chain_meta": chain_meta,
+            "recommendation": rec,
             "timestamp": datetime.now().isoformat()
+        })
+
+    @app.route('/recommend/<chain_name>', methods=['GET'])
+    def recommend(chain_name):
+        """纯净建议接口：输出 BUY/SELL/HOLD 建议，不涉及持仓或交易。"""
+        runner.ensure_imported()
+        cfg = chains_config.get(chain_name)
+        if cfg is None:
+            return jsonify({"error": f"unknown chain: {chain_name}"}), 400
+
+        if cfg.get("category") == "composite":
+            # 综合链条：跑所有子链 → 聚合 → 建议
+            from core.composite_runner import run_composite_chain
+            composite_result = run_composite_chain(
+                chain_name, chains_config, runner.run_chain,
+                ensure_imported=runner.ensure_imported,
+            )
+            if hasattr(composite_result, 'get_json'):
+                composite_data = composite_result.get_json()
+            else:
+                composite_data = composite_result
+            aggregated = composite_data.get("aggregated_signal")
+            chain_meta = {"chain": chain_name, "category": "composite"}
+            rec = RecommendationEngine.from_aggregated(aggregated, chain_meta)
+        else:
+            # 单链条：直接跑信号 → 建议
+            result = runner.run_chain(chain_name)
+            if result is None:
+                return jsonify({"error": f"no factor module for chain: {chain_name}"}), 400
+            if result.get("error"):
+                return jsonify({"error": result["error"], "error_type": result.get("error_type", "")}), 500
+            chain_meta = runner._chain_meta(chain_name)
+            rec = RecommendationEngine.from_signal({
+                **result,
+                "chain_meta": chain_meta,
+            })
+
+        return jsonify({
+            "chain": chain_name,
+            "description": cfg.get("description", ""),
+            "recommendation": rec,
+            "timestamp": datetime.now().isoformat(),
         })
 
     @app.route('/signals/history', methods=['GET'])
