@@ -12,9 +12,10 @@ MONTHLY_SOURCES = {"cpi", "pmi", "m2", "social_financing", "us_cpi"}
 def _resolve_ic_price_dep(cfg: Dict[str, Any]) -> str:
     """Resolve the price dep for IC computation.
 
-    For mixed chains, prefer execution_asset matching dep.
+    For mixed chains, prefer execution_asset matching dep, then check drivers.
     For regular chains, use data_deps[0].
     """
+    _TYPE_TO_DRIVER = {"etf": "equity", "stock": "equity", "basket": "equity"}
     deps = cfg.get("data_deps", [])
     if not deps:
         return ""
@@ -23,6 +24,13 @@ def _resolve_ic_price_dep(cfg: Dict[str, Any]) -> str:
         for dep in deps:
             if execution_asset in dep or dep.endswith(f"_{execution_asset}"):
                 return dep
+    trade_asset_type = cfg.get("trade_asset_type", "")
+    drivers = cfg.get("drivers", {})
+    if drivers and trade_asset_type:
+        driver_key = _TYPE_TO_DRIVER.get(trade_asset_type, trade_asset_type)
+        type_deps = drivers.get(driver_key, [])
+        if type_deps and type_deps[0] in deps:
+            return type_deps[0]
     trade_asset = cfg.get("trade_asset", "")
     if trade_asset:
         for dep in deps:

@@ -38,6 +38,51 @@ class BuildAssetToDepTest(unittest.TestCase):
         m = _build_asset_to_dep(chains)
         self.assertEqual(m, {})
 
+    def test_mixed_chain_maps_to_execution_asset(self):
+        """Mixed chains should map to the trade asset's price dep, not the first driver."""
+        chains = {
+            "pork_stock_signal": {
+                "asset": "养殖ETF(159865)",
+                "trade_asset": "养殖ETF(159865)",
+                "execution_asset": "159865",
+                "trade_asset_type": "etf",
+                "data_deps": ["pork_futures", "corn_futures", "soybean_meal_futures", "pork_spot", "breeding_etf"],
+                "drivers": {
+                    "futures": ["pork_futures", "corn_futures", "soybean_meal_futures"],
+                    "spot": ["pork_spot"],
+                    "equity": ["breeding_etf"],
+                },
+            },
+            "gold_etf_signal": {
+                "asset": "黄金ETF(518880)",
+                "trade_asset": "黄金ETF(518880)",
+                "execution_asset": "518880",
+                "trade_asset_type": "etf",
+                "data_deps": ["gold_futures", "crude_oil_futures", "usd_cny", "tips_yield", "gold_etf"],
+                "drivers": {
+                    "futures": ["gold_futures", "crude_oil_futures"],
+                    "macro": ["usd_cny", "tips_yield"],
+                    "equity": ["gold_etf"],
+                },
+            },
+            "oil_stock_signal": {
+                "asset": "中国石油(601857)",
+                "trade_asset": "中国石油(601857)",
+                "execution_asset": "601857",
+                "trade_asset_type": "stock",
+                "data_deps": ["crude_oil_futures", "brent_oil", "eia_crude_stock", "petrochina_stock"],
+                "drivers": {
+                    "futures": ["crude_oil_futures", "brent_oil"],
+                    "macro": ["eia_crude_stock"],
+                    "equity": ["petrochina_stock"],
+                },
+            },
+        }
+        m = _build_asset_to_dep(chains)
+        self.assertEqual(m["养殖ETF(159865)"], "breeding_etf")
+        self.assertEqual(m["黄金ETF(518880)"], "gold_etf")
+        self.assertEqual(m["中国石油(601857)"], "petrochina_stock")
+
 
 class ForwardReturnsTest(unittest.TestCase):
     def test_calculates_forward_returns(self):

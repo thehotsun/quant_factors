@@ -29,27 +29,38 @@ def _build_asset_to_dep(chains_config: Dict[str, Dict[str, Any]]) -> Dict[str, s
     """Build reverse mapping from asset label → price data dep.
 
     For mixed chains, prefer execution_asset (code) if it appears in data_deps,
-    then fall back to the first data_dep.
+    then check drivers for the trade_asset_type group, then fall back to data_deps[0].
     """
+    # Map trade_asset_type to driver group key
+    _TYPE_TO_DRIVER = {"etf": "equity", "stock": "equity", "basket": "equity"}
+
     mapping: Dict[str, str] = {}
     for cfg in chains_config.values():
         asset = cfg.get("asset", "")
         trade_asset = cfg.get("trade_asset", "") or asset
         execution_asset = cfg.get("execution_asset", "")
+        trade_asset_type = cfg.get("trade_asset_type", "")
         deps = cfg.get("data_deps", [])
+        drivers = cfg.get("drivers", {})
         if not asset or not deps:
             continue
         if asset in mapping:
             continue
-        # For mixed chains: execution_asset is the code (e.g., "159865")
-        # Check if any dep matches the execution_asset or trade_asset
         preferred = None
+        # 1. Check if execution_asset appears in any dep name
         if execution_asset:
             for dep in deps:
                 if execution_asset in dep or dep.endswith(f"_{execution_asset}"):
                     preferred = dep
                     break
-        # Also check if any dep name matches the trade asset label
+        # 2. Check drivers: for mixed chains, the trade_asset_type group
+        #    (e.g., "equity") contains the trade asset's price dep
+        if not preferred and drivers and trade_asset_type:
+            driver_key = _TYPE_TO_DRIVER.get(trade_asset_type, trade_asset_type)
+            type_deps = drivers.get(driver_key, [])
+            if type_deps and type_deps[0] in deps:
+                preferred = type_deps[0]
+        # 3. Check if any dep name matches the trade asset label
         if not preferred and trade_asset:
             for dep in deps:
                 if dep in trade_asset or trade_asset in dep:
