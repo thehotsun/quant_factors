@@ -89,6 +89,7 @@ def create_app(settings=None):
                     "opportunity": result["opportunity"],
                     "factor_data": result["factor_data"],
                     "signal_strength": result.get("signal_strength"),
+                    "chain_meta": result.get("chain_meta"),
                     "timestamp": datetime.now().isoformat()
                 })
         return jsonify({"error": f"unknown chain: {chain}"}), 400
@@ -162,6 +163,7 @@ def create_app(settings=None):
             "chain": chain_name,
             "signal": result.get("signal"),
             "signal_strength": result.get("signal_strength"),
+            "chain_meta": runner._chain_meta(chain_name),
             "timestamp": datetime.now().isoformat()
         })
 

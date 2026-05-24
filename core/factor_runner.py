@@ -290,4 +290,21 @@ class FactorRunner:
             "factor_data": data,
             "opportunity": signal,
             "signal_strength": strength,
+            "chain_meta": self._chain_meta(chain_name),
         }
+
+    def _chain_meta(self, chain_name: str) -> Optional[Dict[str, Any]]:
+        """Return chain-level metadata for mixed chains (trade_asset, drivers, etc.)."""
+        chain_def = self.chain_defs.get(chain_name)
+        if chain_def is None:
+            return None
+        meta = {}
+        for attr in ("trade_asset", "trade_asset_type", "execution_asset",
+                     "signal_target", "category"):
+            val = getattr(chain_def, attr, None)
+            if val:
+                meta[attr] = val
+        drivers = getattr(chain_def, "drivers", None)
+        if drivers:
+            meta["drivers"] = drivers
+        return meta if meta else None
