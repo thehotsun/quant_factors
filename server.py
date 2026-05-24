@@ -151,6 +151,27 @@ def create_app(settings=None):
         factors = FactorRegistry.list_all()
         return jsonify({"factors": factors, "total": len(factors)})
 
+    @app.route('/driver_health', methods=['GET'])
+    @app.route('/driver_health/<chain_name>', methods=['GET'])
+    def driver_health(chain_name=None):
+        runner.ensure_imported()
+        if chain_name:
+            chain_def = runner.chain_defs.get(chain_name)
+            if chain_def is None:
+                return jsonify({"error": f"unknown chain: {chain_name}"}), 400
+            drivers = getattr(chain_def, "drivers", {})
+            if not drivers:
+                return jsonify({"chain": chain_name, "drivers": {}, "message": "non-mixed chain"})
+            status = data_bus.get_driver_status(chain_def)
+            return jsonify({"chain": chain_name, "drivers": status})
+        # All mixed chains
+        result = {}
+        for name, chain_def in runner.chain_defs.items():
+            drivers = getattr(chain_def, "drivers", {})
+            if drivers:
+                result[name] = data_bus.get_driver_status(chain_def)
+        return jsonify({"chains": result, "total": len(result)})
+
     @app.route('/signal/<chain_name>', methods=['GET'])
     def signal_only(chain_name):
         runner.ensure_imported()

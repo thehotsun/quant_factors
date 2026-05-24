@@ -82,7 +82,7 @@ def format_chain_report(composite_results: Dict[str, Any]) -> Dict[str, Any]:
     # Build signal list
     signal_list = []
     for s in signals[:10]:
-        signal_list.append({
+        entry = {
             "trigger": s.get("trigger", s.get("_chain", "")),
             "direction": s.get("direction", ""),
             "strength": s.get("strength", 0),
@@ -91,7 +91,15 @@ def format_chain_report(composite_results: Dict[str, Any]) -> Dict[str, Any]:
             "asset": s.get("asset", ""),
             "holding_days": s.get("holding_days"),
             "stop_loss": s.get("stop_loss"),
-        })
+        }
+        # Mixed chain fields
+        if s.get("drivers_used"):
+            entry["drivers_used"] = s["drivers_used"]
+        if s.get("missing_drivers"):
+            entry["missing_drivers"] = s["missing_drivers"]
+        if s.get("trade_asset"):
+            entry["trade_asset"] = s["trade_asset"]
+        signal_list.append(entry)
 
     # Build error list
     errors = []
@@ -149,7 +157,15 @@ def format_chain_report_markdown(report: Dict[str, Any], price_context: List[Dic
         lines.append("**活跃信号:**")
         for s in signals:
             emoji = direction_emoji(s["direction"])
-            lines.append(f"- {emoji} **{s['trigger']}** ({s['direction']}): {s['reason']}")
+            line = f"- {emoji} **{s['trigger']}** ({s['direction']}): {s['reason']}"
+            # Mixed chain: show drivers
+            drivers_used = s.get("drivers_used", [])
+            missing = s.get("missing_drivers", [])
+            if drivers_used:
+                line += f"\n  📎 驱动: {', '.join(drivers_used)}"
+            if missing:
+                line += f"\n  ⚠️ 缺失: {', '.join(missing)}"
+            lines.append(line)
 
     errors = report.get("errors", [])
     if errors:

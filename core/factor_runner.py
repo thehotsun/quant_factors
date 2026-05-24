@@ -307,4 +307,10 @@ class FactorRunner:
         drivers = getattr(chain_def, "drivers", None)
         if drivers:
             meta["drivers"] = drivers
+        # Driver health: check data availability
+        if drivers:
+            try:
+                meta["driver_health"] = self._bus.get_driver_status(chain_def)
+            except Exception:
+                pass
         return meta if meta else None
