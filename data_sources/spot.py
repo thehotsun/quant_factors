@@ -25,12 +25,12 @@ def fetch_pork_spot(start_day="20200101", end_day=None):
             print("  生猪现货数据为空")
             return None
 
-        # sp 列是现货价格
-        result = df[["date", "sp"]].copy()
-        result = result.rename(columns={"sp": "close"})
+        # spot_price 列是现货价格
+        result = df[["date", "spot_price"]].copy()
+        result = result.rename(columns={"spot_price": "close"})
         result["date"] = pd.to_datetime(result["date"].astype(str), format="%Y%m%d", errors="coerce")
         result["close"] = pd.to_numeric(result["close"], errors="coerce")
-        result["source"] = "akshare.futures_spot_price_daily:LH.sp"
+        result["source"] = "akshare.futures_spot_price_daily:LH.spot_price"
         result = result.dropna(subset=["date", "close"]).sort_values("date")
         result.reset_index(drop=True, inplace=True)
 
