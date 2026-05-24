@@ -26,16 +26,36 @@ FORWARD_DAYS = [1, 5, 10, 20]
 
 
 def _build_asset_to_dep(chains_config: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
-    """Build reverse mapping from asset label → primary data_dep.
+    """Build reverse mapping from asset label → price data dep.
 
-    Uses the first data_dep of each chain as the primary price source.
+    For mixed chains, prefer execution_asset (code) if it appears in data_deps,
+    then fall back to the first data_dep.
     """
     mapping: Dict[str, str] = {}
     for cfg in chains_config.values():
         asset = cfg.get("asset", "")
+        trade_asset = cfg.get("trade_asset", "") or asset
+        execution_asset = cfg.get("execution_asset", "")
         deps = cfg.get("data_deps", [])
-        if asset and deps and asset not in mapping:
-            mapping[asset] = deps[0]
+        if not asset or not deps:
+            continue
+        if asset in mapping:
+            continue
+        # For mixed chains: execution_asset is the code (e.g., "159865")
+        # Check if any dep matches the execution_asset or trade_asset
+        preferred = None
+        if execution_asset:
+            for dep in deps:
+                if execution_asset in dep or dep.endswith(f"_{execution_asset}"):
+                    preferred = dep
+                    break
+        # Also check if any dep name matches the trade asset label
+        if not preferred and trade_asset:
+            for dep in deps:
+                if dep in trade_asset or trade_asset in dep:
+                    preferred = dep
+                    break
+        mapping[asset] = preferred or deps[0]
     return mapping
 
 
