@@ -413,10 +413,8 @@ chains:
     drivers:
       futures:
         - aluminum_futures
-        - thermal_coal_futures
     data_deps:
       - aluminum_futures
-      - thermal_coal_futures
   rebar:
     category: metals
     description: 螺纹钢：建筑/基建材料，监测季节性 + 库存周期

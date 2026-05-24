@@ -36,7 +36,7 @@ class DataBus:
         "pork_futures", "pork_futures_far", "egg_futures",
         "soybean_meal_futures", "corn_futures", "soybean_domestic_futures",
         "soybean_import_futures", "rapeseed_meal_futures", "soybean_oil_futures",
-        "crude_oil_futures", "thermal_coal_futures",
+        "crude_oil_futures",
         "copper_futures", "aluminum_futures", "rebar_futures",
         "gold_futures", "silver_futures", "iron_ore_futures",
     }
@@ -231,7 +231,7 @@ class DataBus:
         "corn_futures": ("daily", 5), "soybean_domestic_futures": ("daily", 5),
         "soybean_import_futures": ("daily", 5), "rapeseed_meal_futures": ("daily", 5),
         "soybean_oil_futures": ("daily", 5), "crude_oil_futures": ("daily", 5),
-        "thermal_coal_futures": ("daily", 5), "copper_futures": ("daily", 5),
+        "copper_futures": ("daily", 5),
         "aluminum_futures": ("daily", 5), "rebar_futures": ("daily", 5),
         "gold_futures": ("daily", 5), "silver_futures": ("daily", 5),
         "iron_ore_futures": ("daily", 5), "natural_gas_futures": ("daily", 5),

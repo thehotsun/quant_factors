@@ -168,8 +168,8 @@ class CopperFactor(BaseFactor):
 
 @FactorRegistry.register(
     name="aluminum", category="metals",
-    description="铝：能源密集型工业金属，动力煤→电力成本→减产/复产→铝价",
-    asset="铝期货(AL)", data_deps=["aluminum_futures", "thermal_coal_futures"]
+    description="铝：能源密集型工业金属，监测电力成本 + 减产",
+    asset="铝期货(AL)", data_deps=["aluminum_futures"]
 )
 class AluminumFactor(BaseFactor):
     def calculate(self) -> Dict[str, Any]:

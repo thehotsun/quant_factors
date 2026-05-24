@@ -107,7 +107,7 @@ def main():
         ("螺纹钢", "RB.SHF", "rebar_futures"),
         ("黄金期货", "AU.SHF", "gold_futures"),
         ("白银期货", "AG.SHF", "silver_futures"),
-        ("动力煤", "ZC.ZCE", "thermal_coal_futures"),
+        ("动力煤", "ZC.ZCE", "thermal_coal_futures"),  # 已废弃：国家限价后失去市场化定价功能
         ("铁矿石", "I.DCE", "iron_ore_futures"),
     ]
 
