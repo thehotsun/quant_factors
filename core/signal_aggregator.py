@@ -200,6 +200,7 @@ class SignalAggregator:
         result["dedup_applied"] = dedup_applied
         result["driver_groups"] = SignalAggregator._extract_driver_groups(valid)
         result["conflict_score"] = SignalAggregator._compute_conflict_score(valid)
+        result["driver_conflicts"] = SignalAggregator._detect_driver_conflicts(valid)
         return result
 
     @staticmethod
@@ -348,3 +349,39 @@ class SignalAggregator:
         # Conflict = minority weight / total weight (0 if unanimous, max 0.5 if split)
         minority = min(buy_weight, sell_weight)
         return round(min(1.0, 2.0 * minority / total), 4)
+
+    @staticmethod
+    def _detect_driver_conflicts(signals: List[Dict]) -> List[Dict[str, Any]]:
+        """Detect driver groups with opposing signals.
+
+        Returns list of conflicts: [{driver, buy_triggers, sell_triggers, severity}]
+        """
+        if len(signals) <= 1:
+            return []
+
+        # Group signals by driver
+        driver_signals: Dict[str, List[Dict]] = {}
+        for s in signals:
+            driver = (s.get("driver") or s.get("driver_dedup_group")
+                      or s.get("dedup_group")
+                      or SignalAggregator._classify_driver(s.get("trigger", "")))
+            driver_signals.setdefault(driver, []).append(s)
+
+        conflicts = []
+        for driver, sigs in driver_signals.items():
+            buy_triggers = [s.get("trigger", "") for s in sigs if s.get("direction") == "BUY"]
+            sell_triggers = [s.get("trigger", "") for s in sigs if s.get("direction") == "SELL"]
+            if buy_triggers and sell_triggers:
+                total_weight = sum(abs(s.get("strength", 0)) * s.get("confidence", 0.5) for s in sigs)
+                minority_weight = min(
+                    sum(abs(s.get("strength", 0)) * s.get("confidence", 0.5) for s in sigs if s.get("direction") == "BUY"),
+                    sum(abs(s.get("strength", 0)) * s.get("confidence", 0.5) for s in sigs if s.get("direction") == "SELL"),
+                )
+                severity = round(2.0 * minority_weight / total_weight, 4) if total_weight > 0 else 0.0
+                conflicts.append({
+                    "driver": driver,
+                    "buy_triggers": buy_triggers,
+                    "sell_triggers": sell_triggers,
+                    "severity": severity,
+                })
+        return conflicts
