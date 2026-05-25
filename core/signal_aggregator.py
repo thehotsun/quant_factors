@@ -133,15 +133,30 @@ class SignalAggregator:
             if not trigger:
                 continue
             # Try to find matching price data in history
+            # First try exact match on trigger name, then partial match
+            matched = False
             for dep_name, df in history.items():
-                if df is not None and hasattr(df, "columns") and "close" in df.columns:
-                    try:
-                        returns = df["close"].pct_change().dropna().tail(60)
-                        if len(returns) >= 20:
-                            trigger_returns[trigger] = returns.values
-                            break
-                    except Exception:
-                        continue
+                if trigger in dep_name or dep_name in trigger:
+                    if df is not None and hasattr(df, "columns") and "close" in df.columns:
+                        try:
+                            returns = df["close"].pct_change().dropna().tail(60)
+                            if len(returns) >= 20:
+                                trigger_returns[trigger] = returns.values
+                                matched = True
+                                break
+                        except Exception:
+                            continue
+            if not matched:
+                # Fallback: try any available price data
+                for dep_name, df in history.items():
+                    if df is not None and hasattr(df, "columns") and "close" in df.columns:
+                        try:
+                            returns = df["close"].pct_change().dropna().tail(60)
+                            if len(returns) >= 20:
+                                trigger_returns[trigger] = returns.values
+                                break
+                        except Exception:
+                            continue
 
         if len(trigger_returns) < 2:
             return {}

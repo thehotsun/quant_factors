@@ -1,10 +1,12 @@
-"""盘中异动告警：监控期货品种实时价格，涨跌幅超阈值时推送告警。
+"""盘中异动告警：监控期货 + 现货品种实时价格，涨跌幅超阈值时推送告警。
 
-- 使用 akshare futures_zh_spot 获取实时行情（轻量，0.06s/品种）
-- 对比前一日收盘价，计算日内涨跌幅
-- 超过阈值（默认 ±5%）触发告警
-- 同品种同一天不重复告警
-- 只在交易时段运行（日盘 9:00-15:00 + 夜盘 21:00-23:00）
+功能：
+- 分级告警：初始/升级/严重，每档只推一次
+- 恢复通知：涨跌幅回到阈值一半以内时推送告警解除
+- 期货和现货独立配置阈值
+
+期货：使用 akshare futures_zh_spot 获取实时行情（轻量，0.06s/品种）
+现货：使用 akshare soozhu 系列接口获取实时行情
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ import logging
 import os
 from datetime import datetime, date, time as dt_time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -21,7 +23,7 @@ from core.settings import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-# ── 配置 ──────────────────────────────────────────────────
+# ── 期货配置 ──────────────────────────────────────────────
 
 # 监控品种：akshare 新浪代码 → 显示名
 MONITORED_SYMBOLS: Dict[str, str] = {
@@ -44,6 +46,28 @@ _SYMBOL_TO_PARQUET: Dict[str, str] = {
     'Y0': 'soybean_oil_futures',
 }
 
+# ── 现货配置 ──────────────────────────────────────────────
+
+_SPOT_SOURCES: Dict[str, Dict[str, Any]] = {
+    "pork": {
+        "name": "生猪现货",
+        "fetch": "hog",
+        "unit_factor": 1000,
+    },
+    "corn": {
+        "name": "玉米现货",
+        "fetch": "corn",
+        "unit_factor": 2000,
+    },
+    "soybean_domestic": {
+        "name": "国产大豆现货",
+        "fetch": "soybean",
+        "unit_factor": 2000,
+    },
+}
+
+# ── 加载配置 ──────────────────────────────────────────────
+
 def _load_alert_config() -> dict:
     """加载告警配置（alert.yaml）。"""
     try:
@@ -59,60 +83,97 @@ def _load_alert_config() -> dict:
 
 
 _alert_cfg = _load_alert_config()
-DEFAULT_THRESHOLD = _alert_cfg.get("threshold", 5.0)  # 百分比
 
-# 告警状态文件（记录今天已告警的品种）
+# ── 分级告警配置 ──────────────────────────────────────────
+
+# 期货告警档位：(阈值%, emoji标签)
+FUTURES_TIERS: List[Tuple[float, str]] = [
+    (5.0,  "⚠️"),   # 初始告警
+    (8.0,  "🔶"),   # 升级告警
+    (12.0, "🔴"),   # 严重告警
+]
+
+# 现货告警档位
+SPOT_TIERS: List[Tuple[float, str]] = [
+    (3.0,  "⚠️"),
+    (5.0,  "🔶"),
+    (8.0,  "🔴"),
+]
+
+# 恢复阈值：涨跌幅回到初始阈值的多少比例以内算恢复
+RECOVERY_RATIO = 0.5  # 即回到初始阈值的50%以内
+
+# 告警状态文件
 _ALERT_STATE_PATH = Path(DATA_DIR) / "alert_state.json"
+# 现货前收盘价文件
+_SPOT_PREV_CLOSE_PATH = Path(DATA_DIR) / "spot_prev_close.json"
 
 # ── 交易时段判断 ──────────────────────────────────────────
 
 def _is_trading_session() -> bool:
-    """判断当前是否在交易时段内（日盘 + 夜盘）。"""
     now = datetime.now()
     t = now.time()
-
-    # 日盘：9:00 - 11:30, 13:30 - 15:00
     if dt_time(9, 0) <= t <= dt_time(11, 30):
         return True
     if dt_time(13, 30) <= t <= dt_time(15, 0):
         return True
-    # 夜盘：21:00 - 23:00
     if dt_time(21, 0) <= t <= dt_time(23, 0):
         return True
-
     return False
 
 
-# ── 告警状态管理 ──────────────────────────────────────────
+# ── 告警状态管理（分级版）──────────────────────────────────
 
-def _load_alerted() -> Set[str]:
-    """加载今天已告警的品种集合。"""
+def _load_alert_state() -> Dict[str, Any]:
+    """加载今日告警状态。
+
+    格式：
+    {
+        "date": "2026-05-25",
+        "alerts": {
+            "LH0": {"tier": 1, "direction": "up", "pct": 5.2, "time": "10:00"},
+            "spot_corn": {"tier": 2, "direction": "down", "pct": -8.5, "time": "10:30"}
+        }
+    }
+    """
     try:
         if _ALERT_STATE_PATH.exists():
             data = json.loads(_ALERT_STATE_PATH.read_text())
             if data.get("date") == date.today().isoformat():
-                return set(data.get("alerted", []))
+                return data
     except Exception:
         pass
-    return set()
+    return {"date": date.today().isoformat(), "alerts": {}}
 
 
-def _save_alerted(alerted: Set[str]):
-    """保存今天已告警的品种集合。"""
+def _save_alert_state(state: Dict[str, Any]):
     try:
-        data = {
-            "date": date.today().isoformat(),
-            "alerted": sorted(alerted),
-        }
-        _ALERT_STATE_PATH.write_text(json.dumps(data, ensure_ascii=False))
+        _ALERT_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2))
     except Exception as e:
         logger.warning("保存告警状态失败: %s", e)
 
 
-# ── 前一日收盘价 ──────────────────────────────────────────
+def _get_triggered_tier(pct: float, tiers: List[Tuple[float, str]]) -> int:
+    """判断当前涨跌幅触发了哪个档位（返回1-based索引，0=未触发）。"""
+    abs_pct = abs(pct)
+    triggered = 0
+    for i, (threshold, _) in enumerate(tiers, 1):
+        if abs_pct >= threshold:
+            triggered = i
+    return triggered
+
+
+def _is_recovery(pct: float, tiers: List[Tuple[float, str]]) -> bool:
+    """判断是否已恢复到安全区间（涨跌幅 < 初始阈值 × 恢复比例）。"""
+    if not tiers:
+        return True
+    initial_threshold = tiers[0][0]
+    return abs(pct) < initial_threshold * RECOVERY_RATIO
+
+
+# ── 期货前一日收盘价 ──────────────────────────────────────
 
 def _get_prev_close() -> Dict[str, float]:
-    """从 parquet 文件获取所有品种的前一日收盘价。"""
     result = {}
     data_dir = str(DATA_DIR)
     for symbol, parquet_name in _SYMBOL_TO_PARQUET.items():
@@ -126,22 +187,27 @@ def _get_prev_close() -> Dict[str, float]:
     return result
 
 
-# ── 实时行情获取 ──────────────────────────────────────────
+# ── 现货前一日收盘价 ──────────────────────────────────────
+
+def _get_spot_prev_close() -> Dict[str, Dict[str, Any]]:
+    try:
+        if _SPOT_PREV_CLOSE_PATH.exists():
+            return json.loads(_SPOT_PREV_CLOSE_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+# ── 期货实时行情获取 ──────────────────────────────────────
 
 def _fetch_realtime_prices() -> Dict[str, Dict[str, float]]:
-    """获取所有监控品种的实时行情。
-
-    返回 {symbol: {"price": float, "prev_close": float}}
-    """
     import akshare as ak
-
     result = {}
     for symbol in MONITORED_SYMBOLS:
         try:
             df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
             if df is not None and not df.empty:
                 price = float(df['current_price'].iloc[0])
-                # akshare 返回的 last_close 有时为 0，用本地 parquet 兜底
                 prev = float(df['last_close'].iloc[0]) if 'last_close' in df.columns else 0
                 result[symbol] = {"price": price, "prev_close_api": prev}
         except Exception as e:
@@ -149,18 +215,104 @@ def _fetch_realtime_prices() -> Dict[str, Dict[str, float]]:
     return result
 
 
+# ── 现货实时行情获取 ──────────────────────────────────────
+
+def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
+    import akshare as ak
+    result = {}
+
+    # 生猪现货：取全国均价，前一日从 parquet 获取
+    try:
+        df = ak.spot_hog_soozhu()
+        if df is not None and not df.empty and '价格' in df.columns:
+            avg_price = float(df['价格'].mean())
+            result["pork"] = {"price": avg_price * _SPOT_SOURCES["pork"]["unit_factor"], "prev_close": 0}
+    except Exception as e:
+        logger.debug("获取生猪现货失败: %s", e)
+
+    # 玉米现货：soozhu 有历史序列，自对比
+    try:
+        df = ak.spot_corn_price_soozhu()
+        if df is not None and len(df) >= 2 and '价格' in df.columns:
+            factor = _SPOT_SOURCES["corn"]["unit_factor"]
+            result["corn"] = {
+                "price": float(df['价格'].iloc[-1]) * factor,
+                "prev_close": float(df['价格'].iloc[-2]) * factor,
+            }
+    except Exception as e:
+        logger.debug("获取玉米现货失败: %s", e)
+
+    # 国产大豆现货：soozhu 有历史序列，自对比
+    try:
+        df = ak.spot_soybean_price_soozhu()
+        if df is not None and len(df) >= 2 and '价格' in df.columns:
+            factor = _SPOT_SOURCES["soybean_domestic"]["unit_factor"]
+            result["soybean_domestic"] = {
+                "price": float(df['价格'].iloc[-1]) * factor,
+                "prev_close": float(df['价格'].iloc[-2]) * factor,
+            }
+    except Exception as e:
+        logger.debug("获取国产大豆现货失败: %s", e)
+
+    return result
+
+
+# ── 价格格式化 ──────────────────────────────────────────
+
+def _format_price(price: float) -> str:
+    if price >= 10000:
+        return f"{price:,.0f}"
+    elif price >= 100:
+        return f"{price:.0f}"
+    else:
+        return f"{price:.2f}"
+
+
+# ── 告警推送 ──────────────────────────────────────────────
+
+def _push_alert(push_fn, alert: Dict[str, Any], tier: int, tiers: List[Tuple[float, str]]):
+    """推送一条分级告警。"""
+    _, emoji = tiers[tier - 1]
+    title = f"{emoji} {alert['name']}{alert['direction']}告警（{['','初告警','升级','严重'][tier]}）"
+
+    price_str = _format_price(alert['price'])
+    prev_str = _format_price(alert['prev_close'])
+    lines = [
+        f"**{alert['name']}** {alert['direction']} {alert['pct_change']:+.2f}%",
+        f"当前价: {price_str} | 前收: {prev_str}",
+    ]
+    if alert.get("prev_date"):
+        lines.append(f"前收日期: {alert['prev_date']}")
+    lines.append(f"档位: 第{tier}档 ({tiers[tier-1][0]}%)")
+    lines.append(f"时间: {datetime.now().strftime('%H:%M')}")
+    content = "\n".join(lines)
+
+    try:
+        push_fn(title, content)
+    except Exception as e:
+        logger.error("推送告警失败: %s", e)
+
+
+def _push_recovery(push_fn, symbol: str, name: str, pct: float, asset_type: str):
+    """推送一条恢复通知。"""
+    direction = "上涨" if pct > 0 else "下跌"
+    title = f"✅ {name}告警解除"
+    content = (
+        f"**{name}** 已回落至 {pct:+.2f}%，{direction}幅度收窄\n"
+        f"时间: {datetime.now().strftime('%H:%M')}"
+    )
+    try:
+        push_fn(title, content)
+    except Exception as e:
+        logger.error("推送恢复通知失败: %s", e)
+
+
 # ── 告警检查 ──────────────────────────────────────────────
 
-def check_market_alerts(threshold: float = DEFAULT_THRESHOLD,
-                        push_fn=None) -> List[Dict[str, Any]]:
-    """检查市场异动，返回触发告警列表。
+def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
+    """检查市场异动（期货 + 现货），支持分级告警 + 恢复通知。
 
-    Args:
-        threshold: 涨跌幅阈值（百分比），默认 ±5%
-        push_fn: 推送函数 push_fn(title, content) -> bool
-
-    Returns:
-        触发的告警列表 [{symbol, name, price, prev_close, pct_change, direction}]
+    返回触发的告警/恢复列表。
     """
     if not _is_trading_session():
         logger.debug("非交易时段，跳过异动检查")
@@ -171,70 +323,122 @@ def check_market_alerts(threshold: float = DEFAULT_THRESHOLD,
         logger.debug("非交易日，跳过异动检查")
         return []
 
-    # 获取前一日收盘价（本地 parquet 优先）
+    state = _load_alert_state()
+    alerts_log = state.get("alerts", {})
+    triggered = []  # 本轮触发的告警/恢复
+
+    # ── 期货异动检查 ──────────────────────────────────────
+
     prev_closes = _get_prev_close()
-    if not prev_closes:
-        logger.warning("无法获取前一日收盘价，跳过异动检查")
-        return []
-
-    # 获取实时行情
     realtime = _fetch_realtime_prices()
-    if not realtime:
-        logger.warning("无法获取实时行情，跳过异动检查")
-        return []
 
-    # 加载已告警品种
-    alerted = _load_alerted()
+    if prev_closes and realtime:
+        for symbol, info in realtime.items():
+            price = info["price"]
+            prev = prev_closes.get(symbol, info.get("prev_close_api", 0))
+            if not prev or prev <= 0:
+                continue
 
-    # 检查涨跌幅
-    alerts = []
-    for symbol, info in realtime.items():
-        if symbol in alerted:
-            continue
-
-        price = info["price"]
-        # 优先用本地 parquet 的前收，api 的 last_close 作兜底
-        prev = prev_closes.get(symbol, info.get("prev_close_api", 0))
-        if not prev or prev <= 0:
-            continue
-
-        pct = (price - prev) / prev * 100
-        if abs(pct) >= threshold:
+            pct = (price - prev) / prev * 100
             name = MONITORED_SYMBOLS.get(symbol, symbol)
-            direction = "暴涨" if pct > 0 else "暴跌"
-            alert = {
-                "symbol": symbol,
-                "name": name,
-                "price": price,
-                "prev_close": prev,
-                "pct_change": round(pct, 2),
-                "direction": direction,
-            }
-            alerts.append(alert)
 
-    # 推送告警
-    if alerts and push_fn:
-        for alert in alerts:
-            title = f"⚠️ {alert['name']}{alert['direction']}告警"
-            content = (
-                f"**{alert['name']}** {alert['direction']} {alert['pct_change']:+.2f}%\n"
-                f"当前价: {alert['price']:.0f} | 前收: {alert['prev_close']:.0f}\n"
-                f"时间: {datetime.now().strftime('%H:%M')}"
+            _process_alert(
+                symbol=symbol, name=name, price=price, prev=prev,
+                pct=pct, asset_type="期货", tiers=FUTURES_TIERS,
+                alerts_log=alerts_log, push_fn=push_fn, triggered=triggered,
             )
-            try:
-                push_fn(title, content)
-            except Exception as e:
-                logger.error("推送告警失败: %s", e)
 
-        # 记录已告警品种
-        alerted.update(a["symbol"] for a in alerts)
-        _save_alerted(alerted)
+    # ── 现货异动检查 ──────────────────────────────────────
 
-    if alerts:
-        names = [a["name"] for a in alerts]
-        logger.info("异动告警触发: %s", ", ".join(names))
+    spot_prev = _get_spot_prev_close()
+    spot_realtime = _fetch_realtime_spot_prices()
 
-    return alerts
+    if spot_realtime:
+        for key, spot_info in spot_realtime.items():
+            spot_key = f"spot_{key}"
+            src = _SPOT_SOURCES.get(key, {})
+            name = src.get("name", key)
+            current_price = spot_info["price"]
+
+            # 优先用 soozhu 自对比的 prev_close，其次用 spot_prev_close.json
+            prev_price = spot_info.get("prev_close", 0)
+            prev_date = ""
+            if not prev_price or prev_price <= 0:
+                prev_info = spot_prev.get(key, {})
+                prev_price = prev_info.get("price", 0)
+                prev_date = prev_info.get("date", "")
+
+            if not prev_price or prev_price <= 0:
+                continue
+
+            pct = (current_price - prev_price) / prev_price * 100
+
+            alert_extra = {}
+            if prev_date:
+                alert_extra["prev_date"] = prev_date
+
+            _process_alert(
+                symbol=spot_key, name=name, price=current_price, prev=prev_price,
+                pct=pct, asset_type="现货", tiers=SPOT_TIERS,
+                alerts_log=alerts_log, push_fn=push_fn, triggered=triggered,
+                extra=alert_extra,
+            )
+
+    # ── 保存状态 ──────────────────────────────────────────
+
+    state["alerts"] = alerts_log
+    _save_alert_state(state)
+
+    if triggered:
+        names = [f"{a['name']}({a.get('asset_type','')})" for a in triggered]
+        logger.info("异动事件: %s", ", ".join(names))
+
+    return triggered
+
+
+def _process_alert(symbol: str, name: str, price: float, prev: float,
+                   pct: float, asset_type: str, tiers: List[Tuple[float, str]],
+                   alerts_log: Dict, push_fn, triggered: list,
+                   extra: Dict = None):
+    """处理单个品种的告警逻辑（分级 + 恢复）。"""
+    current_tier = _get_triggered_tier(pct, tiers)
+    prev_state = alerts_log.get(symbol)
+    prev_tier = prev_state.get("tier", 0) if prev_state else 0
+
+    alert_entry = {
+        "symbol": symbol,
+        "name": name,
+        "price": price,
+        "prev_close": prev,
+        "pct_change": round(pct, 2),
+        "direction": "暴涨" if pct > 0 else "暴跌",
+        "asset_type": asset_type,
+    }
+    if extra:
+        alert_entry.update(extra)
+
+    # 情况1：触发了更高档位 → 升级告警
+    if current_tier > 0 and current_tier > prev_tier:
+        if push_fn:
+            _push_alert(push_fn, alert_entry, current_tier, tiers)
+        alerts_log[symbol] = {
+            "tier": current_tier,
+            "direction": "up" if pct > 0 else "down",
+            "pct": round(pct, 2),
+            "time": datetime.now().strftime("%H:%M"),
+        }
+        triggered.append(alert_entry)
+
+    # 情况2：之前告警过，现已恢复到安全区间 → 恢复通知
+    elif prev_tier > 0 and current_tier == 0 and _is_recovery(pct, tiers):
+        if push_fn:
+            _push_recovery(push_fn, symbol, name, pct, asset_type)
+        # 移除告警状态
+        alerts_log.pop(symbol, None)
+        triggered.append({**alert_entry, "event": "recovery"})
+
+    # 情况3：同档位或更高但未升级 → 不重复推送
+    # 情况4：未触发且无历史告警 → 跳过
 
 
 # ── 定时任务入口 ──────────────────────────────────────────

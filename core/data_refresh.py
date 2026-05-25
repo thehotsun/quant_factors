@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Callable, Optional
 
@@ -70,6 +71,93 @@ def retry_fetch(name: str, fetcher: Callable[[], pd.DataFrame], max_retries: int
                 raise
 
 
+def _refresh_spot_data(manifest):
+    """刷新现货数据（生意社 soozhu + 上海金交所）。"""
+    from data_sources.spot import (
+        fetch_pork_spot, fetch_gold_spot, fetch_silver_spot,
+        fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot,
+        fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot,
+        fetch_rebar_spot, fetch_iron_ore_spot, fetch_aluminum_spot,
+        fetch_soybean_domestic_spot,
+    )
+    from download_history import save_parquet
+
+    spot_tasks = [
+        ("生猪现货", fetch_pork_spot, "pork_spot"),
+        ("黄金现货", fetch_gold_spot, "gold_spot"),
+        ("白银现货", fetch_silver_spot, "silver_spot"),
+        ("铜现货", lambda: fetch_copper_spot(start_day="20240101"), "copper_spot"),
+        ("玉米现货", lambda: fetch_corn_spot(start_day="20240101"), "corn_spot"),
+        ("豆粕现货", lambda: fetch_soybean_meal_spot(start_day="20240101"), "soybean_meal_spot"),
+        ("鸡蛋现货", lambda: fetch_egg_spot(start_day="20240101"), "egg_spot"),
+        ("豆油现货", lambda: fetch_soybean_oil_spot(start_day="20240101"), "soybean_oil_spot"),
+        ("菜粕现货", lambda: fetch_rapeseed_meal_spot(start_day="20240101"), "rapeseed_meal_spot"),
+        ("螺纹钢现货", lambda: fetch_rebar_spot(start_day="20240101"), "rebar_spot"),
+        ("铁矿石现货", lambda: fetch_iron_ore_spot(start_day="20240101"), "iron_ore_spot"),
+        ("铝现货", lambda: fetch_aluminum_spot(start_day="20240101"), "aluminum_spot"),
+        ("国产大豆现货", lambda: fetch_soybean_domestic_spot(start_day="20240101"), "soybean_domestic_spot"),
+    ]
+
+    for name, fetcher, filename in spot_tasks:
+        try:
+            df = retry_fetch(name, fetcher)
+            wrote = save_parquet(df, filename)
+            if wrote:
+                manifest.record(name=name, filename=filename, status="success", df=df, wrote=True)
+                logger.info("  %s 刷新成功", name)
+            else:
+                manifest.record(name=name, filename=filename, status="skipped", df=df, wrote=False)
+                logger.warning("  %s 刷新跳过（无有效数据）", name)
+        except Exception as e:
+            manifest.record(name=name, filename=filename, status="failed", df=None, error=str(e), wrote=False)
+            logger.warning("  %s 刷新失败: %s", name, e)
+
+
+def _save_spot_prev_close():
+    """从现货 parquet 提取最新收盘价，保存为 spot_prev_close.json 供盘中异动对比。"""
+    import json
+    from core.settings import DATA_DIR
+
+    spot_files = {
+        "pork": "pork_spot",
+        "egg": "egg_spot",
+        "soybean_meal": "soybean_meal_spot",
+        "corn": "corn_spot",
+        "soybean_oil": "soybean_oil_spot",
+        "rapeseed_meal": "rapeseed_meal_spot",
+        "copper": "copper_spot",
+        "aluminum": "aluminum_spot",
+        "rebar": "rebar_spot",
+        "gold": "gold_spot",
+        "silver": "silver_spot",
+        "iron_ore": "iron_ore_spot",
+        "soybean_domestic": "soybean_domestic_spot",
+    }
+
+    prev_close = {}
+    data_dir = str(DATA_DIR)
+    for key, filename in spot_files.items():
+        path = os.path.join(data_dir, f"{filename}.parquet")
+        try:
+            df = pd.read_parquet(path)
+            if df is not None and not df.empty and 'close' in df.columns:
+                last_row = df.dropna(subset=['close']).iloc[-1]
+                prev_close[key] = {
+                    "price": float(last_row['close']),
+                    "date": str(last_row['date'].date()) if 'date' in df.columns else "",
+                }
+        except Exception:
+            pass
+
+    out_path = os.path.join(data_dir, "spot_prev_close.json")
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(prev_close, f, ensure_ascii=False, indent=2)
+        logger.info("现货前收盘价已保存: %d 个品种", len(prev_close))
+    except Exception as e:
+        logger.warning("保存现货前收盘价失败: %s", e)
+
+
 def daily_data_refresh(data_bus):
     """定时任务：每日数据刷新（国内品种，18:00执行）。"""
     logger.info("开始每日数据刷新（国内品种）...")
@@ -124,9 +212,15 @@ def daily_data_refresh(data_bus):
         elif failed > 0:
             logger.warning("国内数据刷新部分失败: %d/%d", failed, len(tasks))
 
+        # ── 现货数据刷新 ─────────────────────────────────────────
+        _refresh_spot_data(manifest)
+
         data_bus.invalidate()
         manifest.write()
         logger.info("每日数据刷新（国内品种）完成")
+
+        # 保存现货前收盘价供盘中异动对比
+        _save_spot_prev_close()
     except Exception as e:
         logger.error("每日数据刷新异常: %s", e)
 
