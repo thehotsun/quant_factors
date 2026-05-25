@@ -108,24 +108,66 @@ class SignalAggregator:
 
     @staticmethod
     def compute_signal_correlation_discount(signals: List[Dict], history: Any = None) -> Dict[str, float]:
-        """预留接口：基于历史相关性计算信号折扣系数。
+        """基于历史相关性计算信号折扣系数。
 
-        当前返回空 dict（规则折扣由 _dedup_drivers 处理）。
-        未来接入历史价格/信号数据后，可替换为相关矩阵计算：
-
+        对高相关 pair (|ρ| > 0.7) 中较弱信号施加折扣：
             1. 收集各信号 trigger 对应品种的历史收益率序列
             2. 计算 pairwise correlation matrix
-            3. 对高相关 pair (|ρ| > 0.7) 中较弱信号施加折扣
+            3. 对高相关 pair 中较弱信号施加折扣 (1/√n)
             4. 返回 {trigger: discount_factor} 映射
 
         Args:
             signals: 待评估信号列表
-            history: 历史数据（当前未使用，预留）
+            history: 历史价格数据 dict {dep_name: DataFrame}，可选
 
         Returns:
             {trigger_name: discount_factor}，1.0 = 不折扣，<1.0 = 降权
         """
-        return {}
+        if not history or len(signals) < 2:
+            return {}
+
+        # Collect price series for each signal's trigger
+        trigger_returns = {}
+        for sig in signals:
+            trigger = sig.get("trigger", "")
+            if not trigger:
+                continue
+            # Try to find matching price data in history
+            for dep_name, df in history.items():
+                if df is not None and hasattr(df, "columns") and "close" in df.columns:
+                    try:
+                        returns = df["close"].pct_change().dropna().tail(60)
+                        if len(returns) >= 20:
+                            trigger_returns[trigger] = returns.values
+                            break
+                    except Exception:
+                        continue
+
+        if len(trigger_returns) < 2:
+            return {}
+
+        # Compute pairwise correlation and find highly correlated pairs
+        triggers = list(trigger_returns.keys())
+        n = len(triggers)
+        discount = {t: 1.0 for t in triggers}
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                try:
+                    min_len = min(len(trigger_returns[triggers[i]]), len(trigger_returns[triggers[j]]))
+                    if min_len < 20:
+                        continue
+                    a = trigger_returns[triggers[i]][-min_len:]
+                    b = trigger_returns[triggers[j]][-min_len:]
+                    corr = abs(float(np.corrcoef(a, b)[0, 1]))
+                    if corr > 0.7 and not np.isnan(corr):
+                        # Apply 1/sqrt(2) discount to both
+                        discount[triggers[i]] = min(discount[triggers[i]], 1.0 / np.sqrt(2))
+                        discount[triggers[j]] = min(discount[triggers[j]], 1.0 / np.sqrt(2))
+                except Exception:
+                    continue
+
+        return discount
 
     @classmethod
     def _dedup_correlated(cls, signals: List[Dict]) -> List[Dict]:

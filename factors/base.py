@@ -33,7 +33,9 @@ class BaseFactor(ABC):
     def _get_or_calculate(self) -> Dict[str, Any]:
         if self._cached_data is not None:
             return self._cached_data
-        return self.calculate()
+        result = self.calculate()
+        self._cached_data = result
+        return result
 
     def _safe_float(self, series, idx: int = -1, col: str = 'close') -> Optional[float]:
         try:
@@ -67,7 +69,12 @@ class BaseFactor(ABC):
         """自适应阈值：波动率越高，阈值越宽（避免频繁触发）"""
         if not self.adaptive:
             return base
-        cache_key = f"{name}_{len(series)}_{base}"
+        # Use last date as key instead of len(series) for stable caching
+        try:
+            last_ts = str(series.index[-1]) if hasattr(series.index, '__getitem__') else str(len(series))
+        except Exception:
+            last_ts = str(len(series))
+        cache_key = f"{name}_{last_ts}_{base}"
         if cache_key in self._threshold_cache:
             return self._threshold_cache[cache_key]
         clean = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
@@ -128,16 +135,13 @@ class BaseFactor(ABC):
         gain = delta.clip(lower=0)
         loss = (-delta.clip(upper=0))
 
-        avg_gain = float(gain.iloc[1:period + 1].mean())
-        avg_loss = float(loss.iloc[1:period + 1].mean())
+        # Wilder's smoothing via ewm (equivalent to the for-loop but vectorized)
+        avg_gain = gain.iloc[1:].ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+        avg_loss = loss.iloc[1:].ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
 
-        for i in range(period + 1, len(gain)):
-            avg_gain = (avg_gain * (period - 1) + float(gain.iloc[i])) / period
-            avg_loss = (avg_loss * (period - 1) + float(loss.iloc[i])) / period
-
-        if avg_loss == 0:
+        if avg_loss.iloc[-1] == 0:
             return 100.0
-        rs = avg_gain / avg_loss
+        rs = avg_gain.iloc[-1] / avg_loss.iloc[-1]
         return float(100.0 - 100.0 / (1.0 + rs))
 
     def _realized_vol(self, df: pd.DataFrame, col: str = 'close', window: int = 20) -> Optional[float]:
@@ -427,8 +431,16 @@ class BaseFactor(ABC):
             "risk_modifier": risk_modifier,
             "meta": meta,
         }
-        # Keep legacy flat fields for current API consumers, while also
-        # grouping non-standard extras under meta for a stable schema.
+        # DEPRECATION PLAN (2026-05-25):
+        # Legacy flat fields (signal.update(kwargs)) are kept for backward
+        # compatibility with existing API consumers. New code should read
+        # from signal["meta"] instead. After all consumers migrate, remove
+        # the signal.update(kwargs) line below.
+        #
+        # Migration path:
+        #   1. Update API consumers to read from signal["meta"]
+        #   2. Remove kwargs from flat fields (keep only meta)
+        #   3. Eventually deprecate kwargs parameter entirely
         signal.update(kwargs)
         for key, value in kwargs.items():
             if key not in {"trigger"}:
