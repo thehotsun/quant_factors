@@ -8,7 +8,13 @@ class FactorRegistry:
 
     @classmethod
     def register(cls, name: str = None, category: str = "uncategorized",
-                 description: str = "", asset: str = "", data_deps: list = None):
+                 description: str = "", asset: str = "", data_deps: list = None,
+                 status: str = "active"):
+        """Register a factor class.
+
+        Args:
+            status: factor status - "active", "experimental", or "deprecated"
+        """
         def decorator(factor_cls):
             key = name or factor_cls.__name__
             cls._factors[key] = factor_cls
@@ -18,12 +24,14 @@ class FactorRegistry:
                 "description": description,
                 "asset": asset,
                 "data_deps": data_deps or [],
+                "status": status,
             }
             factor_cls._factor_name = key
             factor_cls._category = category
             factor_cls._description = description
             factor_cls._asset = asset
             factor_cls._data_deps = data_deps or []
+            factor_cls._status = status
             return factor_cls
         return decorator
 

@@ -22,7 +22,8 @@ from core.factor_registry import FactorRegistry
 @FactorRegistry.register(
     name="pig_chicken_spread", category="cross",
     description="猪鸡价差→替代效应：猪贵→鸡肉替代需求↑→BUY鸡肉；猪贱→鸡肉被压制→SELL鸡肉",
-    asset="鸡肉概念(温氏/圣农/益生)", data_deps=["pork_futures", "chicken_spot"]
+    asset="鸡肉概念(温氏/圣农/益生)", data_deps=["pork_futures", "chicken_spot"],
+    status="experimental",  # chicken_spot 数据源未接入，因子暂时不可用
 )
 class PigChickenSpread(MixedDriverFactor):
     SUBSTITUTION_THRESHOLD = 2.5

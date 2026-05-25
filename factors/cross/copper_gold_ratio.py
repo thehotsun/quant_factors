@@ -31,8 +31,8 @@ from core.factor_registry import FactorRegistry
 
 @FactorRegistry.register(
     name="copper_gold_ratio", category="cross/system",
-    description="铜金比 → 风险偏好指标 → 权益/商品信号",
-    asset="沪深300ETF(510300)", data_deps=["copper_futures", "gold_futures"]
+    description="铜金比 → 风险偏好指标 → 低分位买黄金(避险)、高分位买权益(顺周期)",
+    asset="黄金期货(AU)/沪深300ETF(510300)", data_deps=["copper_futures", "gold_futures"]
 )
 class CopperGoldRatio(BaseFactor):
 

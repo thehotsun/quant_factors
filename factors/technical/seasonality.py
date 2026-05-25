@@ -18,9 +18,9 @@
 │   - 鸡蛋：8-9月中秋备货+夏季产蛋率低 → 偏多                                      │
 │   - 黄金：12-1月春节+印度婚庆季 → 偏多                                           │
 │                                                                     │
-│ 适用品种：任意有3年以上历史数据的期货品种（通过symbol参数指定）                         │
+│ 适用品种：任意有5年以上历史数据的期货品种（通过symbol参数指定）                         │
 │ 注意：季节性因子是统计规律，不是因果规律，需结合当年实际情况判断                          │
-│   - 至少需要3年历史数据才有统计意义                                               │
+│   - 至少需要5年历史数据才有统计意义                                               │
 │   - 季节性可能因政策、天气等异常因素失效                                           │
 └─────────────────────────────────────────────────────────────────────┘
 """
@@ -37,7 +37,7 @@ from core.factor_registry import FactorRegistry
     asset="通用(任意期货)", data_deps=[]
 )
 class SeasonalityFactor(BaseFactor):
-    MIN_YEARS = 3
+    MIN_YEARS = 5  # 提高到5年，增加统计可靠性
 
     def __init__(self, data_dir: str = "./data", adaptive: bool = True,
                  params: Dict[str, Any] = None, symbol: str = None, data_bus=None):
@@ -79,6 +79,11 @@ class SeasonalityFactor(BaseFactor):
             result["seasonal_avg_return"] = round(avg_return, 4)
             result["seasonal_win_rate"] = round(win_rate, 2)
             result["seasonal_sample_years"] = total_count
+            # Confidence decay for small samples
+            if total_count < 10:
+                result["seasonal_confidence_decay"] = round(total_count / 10.0, 2)
+            else:
+                result["seasonal_confidence_decay"] = 1.0
 
             if avg_return > 0.01 and win_rate > 0.6:
                 result["seasonal_direction"] = "STRONG_BULLISH"
@@ -104,22 +109,26 @@ class SeasonalityFactor(BaseFactor):
         if direction is None:
             return None
 
+        confidence_decay = data.get("seasonal_confidence_decay", 1.0)
+
         if direction == "STRONG_BULLISH":
             return self._make_signal(
                 asset=self.symbol, direction="BUY",
-                reason=f"{data['current_month']}月季节性强势(均收益{avg_return*100:.1f}%,胜率{win_rate*100:.0f}%)",
-                holding_days=20, stop_loss=-0.03, confidence=0.55,
+                reason=f"{data['current_month']}月季节性强势(均收益{avg_return*100:.1f}%,胜率{win_rate*100:.0f}%,样本{data.get('seasonal_sample_years', '?')}年)",
+                holding_days=20, stop_loss=-0.03, confidence=round(0.55 * confidence_decay, 2),
                 strength=0.55, trigger="seasonal_strong_bullish",
                 seasonal_avg_return=avg_return, seasonal_win_rate=win_rate,
+                seasonal_sample_years=data.get("seasonal_sample_years"),
             )
 
         if direction == "STRONG_BEARISH":
             return self._make_signal(
                 asset=self.symbol, direction="SELL",
-                reason=f"{data['current_month']}月季节性弱势(均收益{avg_return*100:.1f}%,胜率{win_rate*100:.0f}%)",
-                holding_days=20, stop_loss=-0.03, confidence=0.55,
+                reason=f"{data['current_month']}月季节性弱势(均收益{avg_return*100:.1f}%,胜率{win_rate*100:.0f}%,样本{data.get('seasonal_sample_years', '?')}年)",
+                holding_days=20, stop_loss=-0.03, confidence=round(0.55 * confidence_decay, 2),
                 strength=-0.55, trigger="seasonal_strong_bearish",
                 seasonal_avg_return=avg_return, seasonal_win_rate=win_rate,
+                seasonal_sample_years=data.get("seasonal_sample_years"),
             )
         return None
 

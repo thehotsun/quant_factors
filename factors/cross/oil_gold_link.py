@@ -139,6 +139,20 @@ class OilGoldLink(BaseFactor):
                 oil_change_20d=oil_change, oil_gold_corr=corr,
                 risk_modifier=regime_mult, regime_note=regime_expl,
             )
+
+        # SELL signal: gold surged without oil support (gold overpriced)
+        if gold_change is not None and gold_change >= surge_threshold:
+            if oil_change < 0.02:  # oil stable or falling
+                regime_mult, regime_expl = self._regime_confidence_modifier(regime, "risk_on")
+                return self._make_signal(
+                    asset="黄金期货(AU)", direction="SELL",
+                    reason=f"黄金20日涨{gold_change*100:.1f}%但原油仅涨{oil_change*100:.1f}%，金价缺乏通胀支撑→回调风险",
+                    holding_days=10, stop_loss=-0.02, confidence=round(0.50 * regime_mult, 2),
+                    strength=-0.50, trigger="gold_overpriced_vs_oil",
+                    oil_change_20d=oil_change, gold_change_20d=gold_change,
+                    risk_modifier=regime_mult, regime_note=regime_expl,
+                )
+
         return None
 
     def signal_strength(self) -> float:
