@@ -113,6 +113,32 @@ def _refresh_spot_data(manifest):
             logger.warning("  %s 刷新失败: %s", name, e)
 
 
+def _save_macro_pit_snapshots(data_bus):
+    """Save point-in-time snapshots for macro data to avoid forward-looking bias.
+
+    Called after daily data refresh. Saves current macro data with timestamp
+    so backtests can use data that was actually available at that time.
+    """
+    from core.macro_calendar import save_pit_snapshot, invalidate_fetch_timestamp_cache
+    from core.settings import DATA_DIR
+
+    # Invalidate fetch timestamp cache so we pick up new manifest
+    invalidate_fetch_timestamp_cache()
+
+    macro_series = ["cpi", "pmi", "m2", "social_financing", "us_cpi"]
+    saved = 0
+    for series_name in macro_series:
+        df = data_bus.get(series_name)
+        if df is not None and len(df) > 0:
+            path = save_pit_snapshot(df, series_name)
+            if path:
+                saved += 1
+                logger.info("  PIT快照已保存: %s", series_name)
+
+    if saved > 0:
+        logger.info("宏观PIT快照保存完成: %d/%d", saved, len(macro_series))
+
+
 def _save_spot_prev_close():
     """从现货 parquet 提取最新收盘价，保存为 spot_prev_close.json 供盘中异动对比。"""
     import json
@@ -218,6 +244,9 @@ def daily_data_refresh(data_bus):
         data_bus.invalidate()
         manifest.write()
         logger.info("每日数据刷新（国内品种）完成")
+
+        # 保存宏观数据 PIT 快照（避免前视偏差）
+        _save_macro_pit_snapshots(data_bus)
 
         # 保存现货前收盘价供盘中异动对比
         _save_spot_prev_close()
