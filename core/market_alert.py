@@ -266,9 +266,11 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
         df = ak.spot_corn_price_soozhu()
         if df is not None and len(df) >= 2 and '价格' in df.columns:
             factor = _SPOT_SOURCES["corn"]["unit_factor"]
+            prev_date = str(df['日期'].iloc[-2]) if '日期' in df.columns else ""
             result["corn"] = {
                 "price": float(df['价格'].iloc[-1]) * factor,
                 "prev_close": float(df['价格'].iloc[-2]) * factor,
+                "prev_date": prev_date,
             }
     except Exception as e:
         logger.debug("获取玉米现货失败: %s", e)
@@ -278,9 +280,11 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
         df = ak.spot_soybean_price_soozhu()
         if df is not None and len(df) >= 2 and '价格' in df.columns:
             factor = _SPOT_SOURCES["soybean_domestic"]["unit_factor"]
+            prev_date = str(df['日期'].iloc[-2]) if '日期' in df.columns else ""
             result["soybean_domestic"] = {
                 "price": float(df['价格'].iloc[-1]) * factor,
                 "prev_close": float(df['价格'].iloc[-2]) * factor,
+                "prev_date": prev_date,
             }
     except Exception as e:
         logger.debug("获取国产大豆现货失败: %s", e)
@@ -394,7 +398,7 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
 
             # 优先用 soozhu 自对比的 prev_close，其次用 spot_prev_close.json
             prev_price = spot_info.get("prev_close", 0)
-            prev_date = ""
+            prev_date = spot_info.get("prev_date", "")
             if not prev_price or prev_price <= 0:
                 prev_info = spot_prev.get(key, {})
                 prev_price = prev_info.get("price", 0)
@@ -402,6 +406,17 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
 
             if not prev_price or prev_price <= 0:
                 continue
+
+            # 数据新鲜度检查：前收价必须是最近 3 天内的数据（覆盖周末）
+            if prev_date:
+                try:
+                    prev_dt = date.fromisoformat(prev_date)
+                    days_old = (date.today() - prev_dt).days
+                    if days_old > 3:
+                        logger.info("%s 前收数据过旧（%s，%d天前），跳过告警", name, prev_date, days_old)
+                        continue
+                except ValueError:
+                    pass  # 日期格式异常时不跳过，继续检查
 
             pct = (current_price - prev_price) / prev_price * 100
 
