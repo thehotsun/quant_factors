@@ -1,11 +1,11 @@
 {
-  "date": "2026-05-25",
+  "date": "2026-05-27",
   "alerts": {
     "spot_corn": {
       "tier": 1,
-      "direction": "up",
-      "pct": 3.48,
-      "time": "21:13"
+      "direction": "down",
+      "pct": -4.92,
+      "time": "13:30"
     }
   }
 }

@@ -48,6 +48,9 @@ _SYMBOL_TO_PARQUET: Dict[str, str] = {
 
 # ── 现货配置 ──────────────────────────────────────────────
 
+# 异常涨跌幅上限：超过此值大概率是数据错误，跳过告警
+_MAX_PCT_THRESHOLD = 30.0
+
 _SPOT_SOURCES: Dict[str, Dict[str, Any]] = {
     "pork": {
         "name": "生猪现货",
@@ -110,16 +113,41 @@ _SPOT_PREV_CLOSE_PATH = Path(DATA_DIR) / "spot_prev_close.json"
 
 # ── 交易时段判断 ──────────────────────────────────────────
 
-def _is_trading_session() -> bool:
-    now = datetime.now()
-    t = now.time()
-    if dt_time(9, 0) <= t <= dt_time(11, 30):
-        return True
-    if dt_time(13, 30) <= t <= dt_time(15, 0):
-        return True
-    if dt_time(21, 0) <= t <= dt_time(23, 0):
-        return True
+# 期货夜盘收盘时间：贵金属 02:30，有色金属 01:00，其余 23:00
+# 统一取最晚的 02:30，避免品种判断复杂化
+_FUTURES_SESSIONS = [
+    (dt_time(9, 0),  dt_time(11, 30)),   # 日盘
+    (dt_time(13, 30), dt_time(15, 0)),    # 日盘
+    (dt_time(21, 0), dt_time(2, 30)),     # 夜盘（跨日，覆盖所有品种）
+]
+
+# 现货：排除 9:00-9:30 开盘缓冲期，等 soozhu 数据刷新
+_SPOT_SESSIONS = [
+    (dt_time(9, 30), dt_time(11, 30)),    # 日盘（9:30 起）
+    (dt_time(13, 30), dt_time(15, 0)),    # 日盘
+    (dt_time(21, 0), dt_time(23, 0)),     # 夜盘
+]
+
+
+def _in_sessions(sessions: list) -> bool:
+    """判断当前时间是否在给定时段列表内（支持跨日）。"""
+    now = datetime.now().time()
+    for start, end in sessions:
+        if start <= end:
+            if start <= now <= end:
+                return True
+        else:  # 跨日（如 21:00-02:30）
+            if now >= start or now <= end:
+                return True
     return False
+
+
+def _is_trading_session() -> bool:
+    return _in_sessions(_FUTURES_SESSIONS)
+
+
+def _is_spot_trading_session() -> bool:
+    return _in_sessions(_SPOT_SESSIONS)
 
 
 # ── 告警状态管理（分级版）──────────────────────────────────
@@ -208,7 +236,10 @@ def _fetch_realtime_prices() -> Dict[str, Dict[str, float]]:
             df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
             if df is not None and not df.empty:
                 price = float(df['current_price'].iloc[0])
-                prev = float(df['last_close'].iloc[0]) if 'last_close' in df.columns else 0
+                # 优先用昨结算价（更准确），其次昨收盘价，最后 0（由上游 fallback parquet）
+                settle = float(df['last_settle_price'].iloc[0]) if 'last_settle_price' in df.columns and df['last_settle_price'].iloc[0] else 0
+                last_close = float(df['last_close'].iloc[0]) if 'last_close' in df.columns and df['last_close'].iloc[0] else 0
+                prev = settle if settle > 0 else last_close
                 result[symbol] = {"price": price, "prev_close_api": prev}
         except Exception as e:
             logger.debug("获取 %s 实时行情失败: %s", symbol, e)
@@ -226,7 +257,13 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
         df = ak.spot_hog_soozhu()
         if df is not None and not df.empty and '价格' in df.columns:
             avg_price = float(df['价格'].mean())
-            result["pork"] = {"price": avg_price * _SPOT_SOURCES["pork"]["unit_factor"], "prev_close": 0}
+            # 生猪用前几日均价做基准（排除今天），避免 prev_close=0 导致 fallback 旧数据
+            prev_prices = df['价格'].iloc[:-1] if len(df) > 1 else df['价格']
+            prev_avg = float(prev_prices.mean()) if len(prev_prices) > 0 else 0
+            result["pork"] = {
+                "price": avg_price * _SPOT_SOURCES["pork"]["unit_factor"],
+                "prev_close": prev_avg * _SPOT_SOURCES["pork"]["unit_factor"] if prev_avg > 0 else 0,
+            }
     except Exception as e:
         logger.debug("获取生猪现货失败: %s", e)
 
@@ -351,7 +388,8 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
     # ── 现货异动检查 ──────────────────────────────────────
 
     spot_prev = _get_spot_prev_close()
-    spot_realtime = _fetch_realtime_spot_prices()
+    # 现货只在现货交易时段检查（9:30 之后，避开开盘缓冲期）
+    spot_realtime = _fetch_realtime_spot_prices() if _is_spot_trading_session() else {}
 
     if spot_realtime:
         for key, spot_info in spot_realtime.items():
@@ -372,6 +410,12 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
                 continue
 
             pct = (current_price - prev_price) / prev_price * 100
+
+            # 异常值过滤：涨跌幅超过 ±30% 大概率是数据错误
+            if abs(pct) > _MAX_PCT_THRESHOLD:
+                logger.warning("%s 涨跌幅异常 %.2f%%，跳过告警（当前价: %s, 前收: %s）",
+                               name, pct, current_price, prev_price)
+                continue
 
             alert_extra = {}
             if prev_date:
