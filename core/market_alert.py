@@ -257,13 +257,7 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
         df = ak.spot_hog_soozhu()
         if df is not None and not df.empty and '价格' in df.columns:
             avg_price = float(df['价格'].mean())
-            # 生猪用前几日均价做基准（排除今天），避免 prev_close=0 导致 fallback 旧数据
-            prev_prices = df['价格'].iloc[:-1] if len(df) > 1 else df['价格']
-            prev_avg = float(prev_prices.mean()) if len(prev_prices) > 0 else 0
-            result["pork"] = {
-                "price": avg_price * _SPOT_SOURCES["pork"]["unit_factor"],
-                "prev_close": prev_avg * _SPOT_SOURCES["pork"]["unit_factor"] if prev_avg > 0 else 0,
-            }
+            result["pork"] = {"price": avg_price * _SPOT_SOURCES["pork"]["unit_factor"], "prev_close": 0}
     except Exception as e:
         logger.debug("获取生猪现货失败: %s", e)
 
