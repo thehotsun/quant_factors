@@ -294,13 +294,35 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
 
 # ── 价格格式化 ──────────────────────────────────────────
 
-def _format_price(price: float) -> str:
+def _format_price(price: float, symbol: str = None) -> str:
+    """格式化价格，传入 symbol 时自动换算展示单位。"""
+    from core.display_units import get_display_rule
+    if symbol:
+        rule = get_display_rule(symbol)
+        if rule:
+            price = price / rule[0]
     if price >= 10000:
         return f"{price:,.0f}"
     elif price >= 100:
         return f"{price:.0f}"
     else:
         return f"{price:.2f}"
+
+
+def _format_price_unit(symbol: str) -> str:
+    """获取展示单位标签，无单位时返回空。"""
+    from core.display_units import get_display_rule
+    rule = get_display_rule(symbol)
+    return rule[1] if rule else ""
+
+
+def _format_price_line(symbol: str, price: float, label: str = "当前价") -> str:
+    """格式化带单位的价格行。"""
+    price_str = _format_price(price, symbol)
+    unit = _format_price_unit(symbol)
+    if unit:
+        return f"{label}: {price_str} {unit}"
+    return f"{label}: {price_str}"
 
 
 # ── 告警推送 ──────────────────────────────────────────────
@@ -310,11 +332,14 @@ def _push_alert(push_fn, alert: Dict[str, Any], tier: int, tiers: List[Tuple[flo
     _, emoji = tiers[tier - 1]
     title = f"{emoji} {alert['name']}{alert['direction']}告警（{['','初告警','升级','严重'][tier]}）"
 
-    price_str = _format_price(alert['price'])
-    prev_str = _format_price(alert['prev_close'])
+    sym = alert.get('symbol', '')
+    price_str = _format_price(alert['price'], sym)
+    prev_str = _format_price(alert['prev_close'], sym)
+    unit = _format_price_unit(sym)
+    unit_suffix = f" {unit}" if unit else ""
     lines = [
         f"**{alert['name']}** {alert['direction']} {alert['pct_change']:+.2f}%",
-        f"当前价: {price_str} | 前收: {prev_str}",
+        f"当前价: {price_str}{unit_suffix} | 前收: {prev_str}{unit_suffix}",
     ]
     if alert.get("prev_date"):
         lines.append(f"前收日期: {alert['prev_date']}")
@@ -367,10 +392,11 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
     prev_closes = _get_prev_close()
     realtime = _fetch_realtime_prices()
 
-    if prev_closes and realtime:
+    if realtime:
         for symbol, info in realtime.items():
             price = info["price"]
-            prev = prev_closes.get(symbol, info.get("prev_close_api", 0))
+            # 优先用 API 昨结算价（与 current_price 同一合约，避免换月假涨跌）
+            prev = info.get("prev_close_api", 0) or prev_closes.get(symbol, 0)
             if not prev or prev <= 0:
                 continue
 

@@ -47,14 +47,29 @@ def period_label(days: int) -> str:
     return f"近{days}天"
 
 
-def format_trend(prices: List[float]) -> str:
-    """Format a price list as a trend string with arrow and pct change."""
+def format_trend(prices: List[float], key: str = None) -> str:
+    """Format a price list as a trend string with arrow and pct change.
+
+    Args:
+        prices: list of raw prices
+        key: optional data_dep or symbol for display unit conversion
+    """
     if not prices or len(prices) < 2:
         return ""
-    arrow = "↑" if prices[-1] > prices[0] else ("↓" if prices[-1] < prices[0] else "→")
+    from core.display_units import get_display_rule
+    divisor = 1
+    unit_suffix = ""
+    if key:
+        rule = get_display_rule(key)
+        if rule:
+            divisor, unit_suffix = rule
+            unit_suffix = f" {unit_suffix}"
+    display_prices = [p / divisor for p in prices]
+    arrow = "↑" if display_prices[-1] > display_prices[0] else ("↓" if display_prices[-1] < display_prices[0] else "→")
     pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
-    price_str = " → ".join(f"{p:.0f}" if abs(p) >= 100 else f"{p:.2f}" for p in prices)
-    return f"{price_str} {arrow} ({pct:+.1f}%)"
+    fmt = lambda p: f"{p:,.0f}" if abs(p) >= 100 else (f"{p:.1f}" if abs(p) >= 10 else f"{p:.2f}")
+    price_str = " → ".join(fmt(p) for p in display_prices)
+    return f"{price_str}{unit_suffix} {arrow} ({pct:+.1f}%)"
 
 
 def format_chain_report(composite_results: Dict[str, Any]) -> Dict[str, Any]:

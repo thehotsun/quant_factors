@@ -299,7 +299,7 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
         for futures_dep, spot_dep, label in key_assets:
             # 期货价格
             prices = _get_price_trend(data_bus, futures_dep)
-            trend_str = format_trend(prices) if prices else ""
+            trend_str = format_trend(prices, key=futures_dep) if prices else ""
             pos = _get_price_position(data_bus, futures_dep)
             pos_str = ""
             if pos:
@@ -313,7 +313,7 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
             if spot_dep:
                 spot_prices = _get_price_trend(data_bus, spot_dep)
                 if spot_prices:
-                    spot_trend = format_trend(spot_prices)
+                    spot_trend = format_trend(spot_prices, key=spot_dep)
                     price_context.append({"label": f"{label}现货", "trend": spot_trend, "position": ""})
 
     if aggregated:
