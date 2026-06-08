@@ -38,6 +38,11 @@ _DISPLAY_RULES = {
     # 鸡肉：元/吨 → 元/斤（如有）
     "chicken_futures": (2000, "元/斤"),
     "chicken_spot": (2000, "元/斤"),
+
+    # 农产品现货（market_alert.py 使用 spot_ 前缀）
+    "spot_corn": (2000, "元/斤"),
+    "spot_soybean_domestic": (2000, "元/斤"),
+    "spot_pork": (2000, "元/斤"),
 }
 
 # akshare 新浪代码映射（市场告警用）

@@ -1,54 +1,54 @@
 {
   "pork": {
-    "price": 9620.0,
-    "date": "2026-05-26"
-  },
-  "egg": {
-    "price": 4640.0,
-    "date": "2026-05-26"
-  },
-  "soybean_meal": {
-    "price": 2934.0,
-    "date": "2026-05-26"
+    "price": 9445.714285714286,
+    "date": "2026-06-08"
   },
   "corn": {
-    "price": 2320.0,
-    "date": "2026-05-26"
-  },
-  "soybean_oil": {
-    "price": 8564.0,
-    "date": "2026-05-26"
-  },
-  "rapeseed_meal": {
-    "price": 2416.0,
-    "date": "2026-05-26"
-  },
-  "copper": {
-    "price": 104800.0,
-    "date": "2026-05-26"
-  },
-  "aluminum": {
-    "price": 24093.33,
-    "date": "2026-05-26"
-  },
-  "rebar": {
-    "price": 3219.0,
-    "date": "2026-05-26"
-  },
-  "gold": {
-    "price": 997.85,
-    "date": "2026-05-24"
-  },
-  "silver": {
-    "price": 18903.0,
-    "date": "2026-05-24"
-  },
-  "iron_ore": {
-    "price": 775.33,
-    "date": "2026-05-26"
+    "price": 2340.0,
+    "date": "2026-06-07"
   },
   "soybean_domestic": {
-    "price": 4510.0,
-    "date": "2026-05-26"
+    "price": 3170.0,
+    "date": "2026-06-07"
+  },
+  "egg": {
+    "price": 5310.0,
+    "date": "2026-06-05"
+  },
+  "soybean_meal": {
+    "price": 2864.0,
+    "date": "2026-06-05"
+  },
+  "soybean_oil": {
+    "price": 8530.0,
+    "date": "2026-06-05"
+  },
+  "rapeseed_meal": {
+    "price": 2372.0,
+    "date": "2026-06-05"
+  },
+  "copper": {
+    "price": 105398.33,
+    "date": "2026-06-05"
+  },
+  "aluminum": {
+    "price": 24220.0,
+    "date": "2026-06-05"
+  },
+  "rebar": {
+    "price": 3176.34,
+    "date": "2026-06-05"
+  },
+  "gold": {
+    "price": 974.87,
+    "date": "2026-06-03"
+  },
+  "silver": {
+    "price": 17685.0,
+    "date": "2026-06-03"
+  },
+  "iron_ore": {
+    "price": 752.11,
+    "date": "2026-06-05"
   }
 }

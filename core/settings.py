@@ -49,3 +49,43 @@ def load_factor_params(path: Path = FACTOR_PARAMS_PATH) -> Dict[str, Any]:
     except Exception as e:
         logger.warning("加载 factor_params.yaml 失败: %s", e)
         return {}
+
+
+class ConfigManager:
+    """Unified config loader: single entry point for all YAML configs.
+
+    Usage:
+        cfg = ConfigManager()
+        chains = cfg.chains_config      # dict from chains.yaml
+        params = cfg.factor_params       # dict from factor_params.yaml
+        chain_defs = cfg.build_chain_definitions(registry_info_fn)
+    """
+
+    def __init__(self, chains_path: Path = None, params_path: Path = None):
+        self._chains_path = chains_path or CHAINS_CONFIG_PATH
+        self._params_path = params_path or FACTOR_PARAMS_PATH
+        self._chains_config: Dict[str, Dict[str, Any]] = None
+        self._factor_params: Dict[str, Any] = None
+
+    @property
+    def chains_config(self) -> Dict[str, Dict[str, Any]]:
+        if self._chains_config is None:
+            self._chains_config = load_chains_config(self._chains_path)
+        return self._chains_config
+
+    @property
+    def factor_params(self) -> Dict[str, Any]:
+        if self._factor_params is None:
+            self._factor_params = load_factor_params(self._params_path)
+        return self._factor_params
+
+    def build_chain_definitions(self, registry_info_fn=None) -> Dict[str, "ChainDefinition"]:
+        """Build ChainDefinition objects, reusing chain_config.build_chain_definitions."""
+        from core.chain_config import build_chain_definitions
+        return build_chain_definitions(self.chains_config, registry_info_fn)
+
+    def reload(self):
+        """Force reload all configs on next access."""
+        self._chains_config = None
+        self._factor_params = None
+        logger.info("ConfigManager: 配置已重置，下次访问时重新加载")

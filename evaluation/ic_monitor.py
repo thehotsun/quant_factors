@@ -23,9 +23,9 @@ class ICMonitor:
             cls._instance._db_path = Path(db_path)
             cls._instance._initialized = False
         elif str(cls._instance._db_path) != str(Path(db_path)):
-            logger.warning(
+            raise RuntimeError(
                 f"ICMonitor 已用 db_path={cls._instance._db_path} 初始化，"
-                f"忽略新参数 db_path={db_path}"
+                f"不能切换为 db_path={db_path}。请先调用 ICMonitor.reset() 重置。"
             )
         return cls._instance
 
@@ -83,8 +83,13 @@ class ICMonitor:
                 pass
 
     def compute_ic(self, factor_name: str, price_df: pd.DataFrame,
-                   forward_days: int = 5, window: int = 60) -> Optional[Dict[str, Any]]:
-        """计算因子 IC（Rank IC，即 Spearman 相关系数）"""
+                   forward_days: int = 5, window: int = 60,
+                   price_mode: str = "adjusted") -> Optional[Dict[str, Any]]:
+        """计算因子 IC（Rank IC，即 Spearman 相关系数）
+
+        Args:
+            price_mode: "adjusted" (default, use close_adj) or "raw" (use close_raw for P&L)
+        """
         conn = sqlite3.connect(str(self._db_path), timeout=SQLITE_TIMEOUT)
         snapshots = pd.read_sql_query(
             "SELECT snapshot_date, factor_value FROM factor_snapshots WHERE factor_name = ? ORDER BY snapshot_date",
@@ -103,7 +108,15 @@ class ICMonitor:
             price_df["date"] = pd.to_datetime(price_df["date"])
             price_df = price_df.set_index("date")
 
-        price_col = "close" if "close" in price_df.columns else price_df.columns[0]
+        # P1-2: Support both adjusted and raw price for IC calculation
+        if price_mode == "raw" and "close_raw" in price_df.columns:
+            price_col = "close_raw"
+        elif "close_adj" in price_df.columns:
+            price_col = "close_adj"
+        elif "close" in price_df.columns:
+            price_col = "close"
+        else:
+            price_col = price_df.columns[0]
         prices = price_df[price_col].astype(float).sort_index()
 
         forward_returns = prices.pct_change(forward_days).shift(-forward_days)
@@ -155,7 +168,7 @@ class ICMonitor:
                 "price_col": price_col,
                 "forward_dates_available": len(available_forward_end_dates),
             },
-            "status": self._ic_status(ic),
+            "status": self._ic_status(ic, p_value, len(fv)),
         }
 
     @staticmethod
@@ -186,8 +199,33 @@ class ICMonitor:
                 result.append(sorted_index[pos + forward_days])
         return result
 
-    def _ic_status(self, ic: float) -> str:
+    def _ic_status(self, ic: float, p_value: float = None, sample_size: int = None) -> str:
+        """IC status with statistical significance check (P1-3).
+
+        Uses p-value when available; falls back to absolute IC thresholds
+        adjusted for sample size.
+        """
         abs_ic = abs(ic)
+        if p_value is not None:
+            # Use statistical significance as primary signal
+            if p_value < 0.01 and abs_ic >= 0.03:
+                return "healthy"
+            elif p_value < 0.05 and abs_ic >= 0.02:
+                return "healthy"
+            elif p_value < 0.10:
+                return "warning"
+            else:
+                return "decayed"
+        # Fallback: adjust threshold by sample size
+        if sample_size and sample_size < 30:
+            # Small sample: require higher IC
+            if abs_ic >= 0.15:
+                return "healthy"
+            elif abs_ic >= 0.08:
+                return "warning"
+            else:
+                return "decayed"
+        # Default thresholds (N >= 30)
         if abs_ic >= 0.05:
             return "healthy"
         elif abs_ic >= 0.02:
@@ -229,8 +267,9 @@ class ICMonitor:
 
         historical = conn.execute(
             """SELECT AVG(ic_value) as avg_ic, COUNT(*) as cnt
-               FROM ic_records WHERE factor_name = ?""",
-            (factor_name,)
+               FROM ic_records WHERE factor_name = ?
+               AND computed_at < ?""",
+            (factor_name, (datetime.now() - timedelta(days=30)).isoformat())
         ).fetchone()
         conn.close()
 

@@ -145,7 +145,9 @@ def recommend(chain_name):
             composite_data = composite_result
         aggregated = composite_data.get("aggregated_signal")
         chain_meta = {"chain": chain_name, "category": "composite"}
-        rec = RecommendationEngine.from_aggregated(aggregated, chain_meta)
+        # P0-3: pass sub-chain results for data health adjustment
+        sub_results = composite_data.get("all_results")
+        rec = RecommendationEngine.from_aggregated(aggregated, chain_meta, sub_results=sub_results)
     else:
         result = runner.run_chain(chain_name)
         if result is None:

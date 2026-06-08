@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import date
 from typing import Callable, Optional
 
 import akshare as ak
@@ -140,10 +141,56 @@ def _save_macro_pit_snapshots(data_bus):
 
 
 def _save_spot_prev_close():
-    """从现货 parquet 提取最新收盘价，保存为 spot_prev_close.json 供盘中异动对比。"""
+    """保存现货前收盘价，供盘中异动告警对比。
+
+    优先从 soozhu 获取（与盘中实时监控同源），避免数据源口径不一致。
+    无 soozhu 接口的品种从 parquet（生意社）获取。
+    """
     import json
     from core.settings import DATA_DIR
 
+    prev_close = {}
+    data_dir = str(DATA_DIR)
+
+    # ── 有 soozhu 接口的品种：从 soozhu 获取，保证与实时监控同源 ──
+    _soozhu_fetchers = [
+        # (key, akshare接口名, 单位换算因子, 展示名)
+        ("pork",      "spot_hog_soozhu",            1000, "生猪"),
+        ("corn",      "spot_corn_price_soozhu",     1000, "玉米"),
+        ("soybean_domestic", "spot_soybean_price_soozhu", 1000, "国产大豆"),
+    ]
+
+    try:
+        import akshare as ak
+    except ImportError:
+        ak = None
+
+    if ak is not None:
+        for key, api_name, factor, label in _soozhu_fetchers:
+            try:
+                fn = getattr(ak, api_name, None)
+                if fn is None:
+                    continue
+                df = fn()
+                if df is None or df.empty or '价格' not in df.columns:
+                    continue
+                if '日期' in df.columns and len(df) >= 2:
+                    # 有历史序列：取倒数第二条作为前收盘
+                    prev_close[key] = {
+                        "price": float(df['价格'].iloc[-2]) * factor,
+                        "date": str(df['日期'].iloc[-2]),
+                    }
+                else:
+                    # 只有省份数据（如生猪）：取各省均价作为基准
+                    prev_close[key] = {
+                        "price": float(df['价格'].mean()) * factor,
+                        "date": date.today().isoformat(),
+                    }
+                logger.info("soozhu 现货前收盘: %s = %.2f 元/吨", label, prev_close[key]["price"])
+            except Exception as e:
+                logger.warning("soozhu %s 现货前收盘获取失败，回退 parquet: %s", label, e)
+
+    # ── 无 soozhu 接口的品种 + soozhu 获取失败的品种：从 parquet 获取 ──
     spot_files = {
         "pork": "pork_spot",
         "egg": "egg_spot",
@@ -160,9 +207,9 @@ def _save_spot_prev_close():
         "soybean_domestic": "soybean_domestic_spot",
     }
 
-    prev_close = {}
-    data_dir = str(DATA_DIR)
     for key, filename in spot_files.items():
+        if key in prev_close:
+            continue  # soozhu 已获取，跳过
         path = os.path.join(data_dir, f"{filename}.parquet")
         try:
             df = pd.read_parquet(path)

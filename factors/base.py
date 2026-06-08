@@ -274,6 +274,10 @@ class BaseFactor(ABC):
                 prev_pmi = self._safe_float(pmi_df.tail(2), -2, col=col)
                 regime["pmi_change"] = round(regime["pmi"] - prev_pmi, 2) if regime["pmi"] and prev_pmi else None
             else:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "PMI 数据列名不匹配，期望 'value'/'pmi'/'制造业-指数'，实际列: %s", list(pmi_df.columns)
+                )
                 regime["pmi"] = None
                 regime["pmi_change"] = None
         else:

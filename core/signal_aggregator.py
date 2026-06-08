@@ -85,7 +85,10 @@ class SignalAggregator:
             driver_indices.setdefault(driver, []).append(i)
 
         # Only apply dedup where a driver has 2+ signals
-        affected = {d: idxs for d, idxs in driver_indices.items() if len(idxs) >= 2}
+        # P1-8: skip "other" group when driver_patterns is empty (no classification available)
+        has_patterns = bool(cls.DRIVER_PATTERNS)
+        affected = {d: idxs for d, idxs in driver_indices.items()
+                    if len(idxs) >= 2 and (d != "other" or has_patterns)}
         if not affected:
             return signals
 
@@ -98,6 +101,9 @@ class SignalAggregator:
                 orig_confidence = result[idx].get("confidence", 0.5)
                 result[idx]["strength"] = round(orig_strength * decay, 4)
                 result[idx]["confidence"] = round(orig_confidence * decay, 4)
+                # P0-2: also decay trade_signal_strength so dedup affects weighted aggregate
+                if "trade_signal_strength" in result[idx] and result[idx]["trade_signal_strength"] is not None:
+                    result[idx]["trade_signal_strength"] = round(result[idx]["trade_signal_strength"] * decay, 4)
                 result[idx]["driver_dedup_group"] = driver
                 result[idx]["driver_dedup_factor"] = round(decay, 4)
                 # Also set driver for downstream grouping
@@ -147,16 +153,10 @@ class SignalAggregator:
                         except Exception:
                             continue
             if not matched:
-                # Fallback: try any available price data
-                for dep_name, df in history.items():
-                    if df is not None and hasattr(df, "columns") and "close" in df.columns:
-                        try:
-                            returns = df["close"].pct_change().dropna().tail(60)
-                            if len(returns) >= 20:
-                                trigger_returns[trigger] = returns.values
-                                break
-                        except Exception:
-                            continue
+                # P1-7: skip fallback to prevent unrelated species correlation
+                # trigger must be explicitly mapped to a dep_name
+                logger.debug("trigger '%s' 无法匹配到任何 dep_name，跳过相关性计算", trigger)
+                continue
 
         if len(trigger_returns) < 2:
             return {}
@@ -222,6 +222,9 @@ class SignalAggregator:
                 orig_confidence = result[idx].get("confidence", 0.5)
                 result[idx]["strength"] = round(orig_strength * decay, 4)
                 result[idx]["confidence"] = round(orig_confidence * decay, 4)
+                # P0-2: also decay trade_signal_strength so dedup affects weighted aggregate
+                if "trade_signal_strength" in result[idx] and result[idx]["trade_signal_strength"] is not None:
+                    result[idx]["trade_signal_strength"] = round(result[idx]["trade_signal_strength"] * decay, 4)
                 result[idx]["dedup_group"] = group_name
                 result[idx]["dedup_factor"] = round(decay, 4)
 
@@ -250,6 +253,29 @@ class SignalAggregator:
             result = SignalAggregator._strongest_aggregate(valid)
         else:
             result = SignalAggregator._weighted_aggregate(valid)
+
+        # P0-4: Integrate resolve_conflict when strong opposing signals exist
+        buy_signals = [s for s in valid if s.get("direction") == "BUY"]
+        sell_signals = [s for s in valid if s.get("direction") == "SELL"]
+        if buy_signals and sell_signals:
+            best_buy = max(buy_signals, key=lambda s: abs(s.get("strength", 0)) * s.get("confidence", 0))
+            best_sell = max(sell_signals, key=lambda s: abs(s.get("strength", 0)) * s.get("confidence", 0))
+            conflict_result = SignalAggregator.resolve_conflict(best_buy, best_sell)
+            if conflict_result.get("conflict_resolved"):
+                # Override aggregated result with conflict resolution
+                result["direction"] = conflict_result.get("direction", result["direction"])
+                result["strength"] = conflict_result.get("strength", result["strength"])
+                result["confidence"] = conflict_result.get("confidence", result["confidence"])
+                result["conflict_resolution"] = {
+                    "resolved": True,
+                    "winner": conflict_result.get("trigger", ""),
+                    "overridden": conflict_result.get("overridden", ""),
+                }
+            else:
+                result["conflict_resolution"] = {
+                    "resolved": False,
+                    "reason": conflict_result.get("reason", "信号冲突未解决"),
+                }
 
         # Attach transparency metadata
         result["raw_signal_count"] = raw_count

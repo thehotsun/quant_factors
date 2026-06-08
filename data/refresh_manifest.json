@@ -1,7 +1,7 @@
 {
   "job": "daily_foreign",
-  "started_at": "2026-05-27T06:11:37.720804",
-  "ended_at": "2026-05-27T06:11:43.799507",
+  "started_at": "2026-06-08T06:16:22.924591",
+  "ended_at": "2026-06-08T06:17:05.466256",
   "summary": {
     "total": 7,
     "success": 7,
@@ -17,8 +17,8 @@
       "wrote": true,
       "error": null,
       "rows": 2578,
-      "min_date": "2016-05-27",
-      "max_date": "2026-05-26",
+      "min_date": "2016-06-08",
+      "max_date": "2026-06-05",
       "columns": [
         "date",
         "open",
@@ -38,8 +38,8 @@
       "wrote": true,
       "error": null,
       "rows": 2542,
-      "min_date": "2016-05-27",
-      "max_date": "2026-05-26",
+      "min_date": "2016-06-08",
+      "max_date": "2026-06-05",
       "columns": [
         "date",
         "open",
@@ -58,9 +58,9 @@
       "status": "success",
       "wrote": true,
       "error": null,
-      "rows": 2732,
+      "rows": 2741,
       "min_date": "2015-02-09",
-      "max_date": "2026-05-25",
+      "max_date": "2026-06-05",
       "columns": [
         "date",
         "open",
@@ -89,9 +89,9 @@
       "status": "success",
       "wrote": true,
       "error": null,
-      "rows": 1612,
+      "rows": 1621,
       "min_date": "2020-01-02",
-      "max_date": "2026-05-18",
+      "max_date": "2026-06-01",
       "columns": [
         "date",
         "close"
@@ -103,9 +103,9 @@
       "status": "success",
       "wrote": true,
       "error": null,
-      "rows": 2277,
+      "rows": 2279,
       "min_date": "1982-08-20",
-      "max_date": "2026-05-15",
+      "max_date": "2026-05-29",
       "columns": [
         "date",
         "total_stocks_kb",
@@ -119,9 +119,9 @@
       "status": "success",
       "wrote": true,
       "error": null,
-      "rows": 1667,
+      "rows": 1676,
       "min_date": "2020-01-02",
-      "max_date": "2026-05-22",
+      "max_date": "2026-06-04",
       "columns": [
         "date",
         "DFII10"

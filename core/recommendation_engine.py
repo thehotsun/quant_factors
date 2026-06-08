@@ -268,12 +268,15 @@ class RecommendationEngine:
         return rec
 
     @staticmethod
-    def from_aggregated(aggregated: Dict[str, Any], chain_meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def from_aggregated(aggregated: Dict[str, Any], chain_meta: Optional[Dict[str, Any]] = None,
+                        sub_results: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Build a RecommendationV1 from an aggregated signal (composite chains).
 
         Args:
             aggregated: output of SignalAggregator.aggregate()
             chain_meta: optional chain metadata
+            sub_results: optional dict of sub-chain results (from composite_runner.all_results),
+                used to collect missing/stale drivers for data health adjustment (P0-3)
 
         Returns:
             RecommendationV1 dict
@@ -323,6 +326,35 @@ class RecommendationEngine:
         driver_groups = aggregated.get("driver_groups", {})
         drivers_used = list(driver_groups.keys()) if driver_groups else []
 
+        # P0-3: Collect missing/stale drivers from sub-chain results for data health adjustment
+        missing_drivers = []
+        stale_deps = []
+        if sub_results:
+            for sub_name, sub_data in sub_results.items():
+                if not isinstance(sub_data, dict):
+                    continue
+                sub_chain_meta = sub_data.get("chain_meta") or {}
+                driver_health = sub_chain_meta.get("driver_health", {})
+                if not isinstance(driver_health, dict):
+                    continue
+                for group, statuses in driver_health.items():
+                    if not isinstance(statuses, dict):
+                        continue
+                    for dep, info in statuses.items():
+                        if not isinstance(info, dict):
+                            continue
+                        st = info.get("status", "ok")
+                        lag = info.get("lag_days")
+                        if st.startswith("missing"):
+                            if dep not in missing_drivers:
+                                missing_drivers.append(dep)
+                                data_notes.append(f"数据缺失: {dep}")
+                        elif st == "stale":
+                            stale_deps.append((dep, lag))
+                            if dep not in missing_drivers:
+                                data_notes.append(f"数据过期: {dep} 已过期 {lag} 天")
+                                risk_notes.append(f"{dep} 数据过期({lag}天)，建议置信度已降低")
+
         # Components
         components = []
         for comp in components_data:
@@ -333,7 +365,7 @@ class RecommendationEngine:
                 "confidence": comp.get("confidence", 0),
             })
 
-        return make_recommendation(
+        rec = make_recommendation(
             recommendation=direction,
             strength=strength,
             confidence=confidence,
@@ -342,7 +374,11 @@ class RecommendationEngine:
             data_notes=data_notes,
             conflict_notes=conflict_notes,
             drivers_used=drivers_used,
-            missing_drivers=[],
+            missing_drivers=missing_drivers,
             components=components,
             chain_meta=chain_meta or {},
         )
+
+        # P0-3: Apply data health adjustment for composite chains
+        rec = RecommendationEngine._adjust_for_data_health(rec, missing_drivers, stale_deps)
+        return rec

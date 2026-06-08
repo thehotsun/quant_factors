@@ -44,6 +44,23 @@ _VALUE_TYPE_MAP = {
     "vol_ratio": "ratio", "seasonal_avg_return": "return", "seasonal_win_rate": "percentile",
 }
 
+# Group keys by type for safe fallback (P0-1: prevent cross-dimension fallback)
+_TYPE_KEY_GROUPS = {
+    "zscore": ["zscore", "zscore_20d"],
+    "ratio": ["ratio", "pig_grain_ratio", "egg_feed_ratio", "pig_chicken_ratio",
+               "copper_gold_ratio", "oil_gas_ratio", "iron_rebar_ratio", "vol_ratio"],
+    "score": ["score", "momentum_score"],
+    "raw_value": ["value", "current_price", "current", "current_cpi", "current_pmi",
+                    "latest", "cpi_actual", "cbot_soybean", "vix_current", "usd_cny",
+                    "domestic_soybean", "iron_ore_price", "pmi"],
+    "spread": ["diff", "spread", "margin", "crush_margin", "divergence"],
+    "return": ["change", "seasonal_avg_return"],
+    "yoy": ["m2_yoy", "sf_growth"],
+    "index": ["feed_cost_index"],
+    "cost": ["cost_per_jin"],
+    "percentile": ["seasonal_win_rate"],
+}
+
 
 def collect_factor_modules(chains_config: Dict[str, Dict[str, Any]]) -> List[str]:
     """Return unique factor modules declared by chains.yaml in deterministic order.
@@ -63,6 +80,32 @@ def collect_factor_modules(chains_config: Dict[str, Dict[str, Any]]) -> List[str
     return modules
 
 
+def _find_fallback_key(data: dict, factor_name: str = "unknown") -> Optional[str]:
+    """Find the first matching fallback key in data, preferring explicit factor_value."""
+    if "factor_value" in data and data["factor_value"] is not None:
+        return "factor_value"
+    for key in FACTOR_VALUE_KEYS:
+        if key in data and data[key] is not None:
+            return key
+    return None
+
+
+def _find_same_type_fallback(data: dict, primary_key: str, factor_name: str = "unknown") -> Optional[str]:
+    """Find a fallback key within the same type group as primary_key.
+
+    P0-1 fix: prevent cross-dimension fallback (e.g. zscore -> current_price).
+    """
+    primary_type = _VALUE_TYPE_MAP.get(primary_key)
+    if primary_type is None:
+        # primary_key is "factor_value" (explicit), no fallback needed
+        return primary_key
+    group = _TYPE_KEY_GROUPS.get(primary_type, [])
+    for key in group:
+        if key in data and data[key] is not None:
+            return key
+    return None
+
+
 def extract_factor_value(data: Any, factor_name: str = "unknown") -> Optional[float]:
     if data is None:
         return None
@@ -71,18 +114,37 @@ def extract_factor_value(data: Any, factor_name: str = "unknown") -> Optional[fl
     if not isinstance(data, dict):
         return None
 
-    for key in FACTOR_VALUE_KEYS:
-        if key in data and data[key] is not None:
+    # Find the first available key
+    primary_key = _find_fallback_key(data, factor_name)
+    if primary_key is None:
+        return None
+
+    # If it's factor_value or we can get the type, try same-type fallback first
+    primary_type = _VALUE_TYPE_MAP.get(primary_key)
+    if primary_type is not None:
+        # Try same-type fallback
+        fallback_key = _find_same_type_fallback(data, primary_key, factor_name)
+        if fallback_key is not None:
             try:
-                if key != "factor_value":
+                if fallback_key != "factor_value":
                     logger.debug(
-                        "因子 %s 未使用 'factor_value' 字段，通过 fallback key '%s' 提取因子值。",
-                        factor_name, key,
+                        "因子 %s 通过同类型 fallback key '%s' (type=%s) 提取因子值。",
+                        factor_name, fallback_key, primary_type,
                     )
-                return float(data[key])
+                return float(data[fallback_key])
             except (ValueError, TypeError):
-                continue
-    return None
+                pass
+
+    # Last resort: use primary_key directly (may be cross-type)
+    try:
+        if primary_key != "factor_value":
+            logger.warning(
+                "因子 %s 跨量纲 fallback 到 key '%s'，建议显式声明 factor_value。",
+                factor_name, primary_key,
+            )
+        return float(data[primary_key])
+    except (ValueError, TypeError):
+        return None
 
 
 def normalize_factor_data(data: Any, factor_name: str = "unknown") -> Any:
@@ -226,22 +288,29 @@ class FactorRunner:
         factor = self.instantiate(chain_name)
         if factor is None:
             return None
-        factor._cached_data = data
+        # P0-5: let factor manage its own cache via _get_or_calculate
+        data = normalize_factor_data(factor._get_or_calculate(), chain_name)
 
+        signal_error = None
         try:
             signal = factor.signal()
         except Exception as e:
             logger.error("因子 %s signal 失败: %s", chain_name, e)
             signal = None
+            signal_error = str(e)
 
         today = datetime.now().strftime("%Y-%m-%d")
         self.signal_logger.log(chain_name, signal, strength, data, as_of=today, run_id=f"{chain_name}:{today}")
 
-        return {
+        result = {
             "factor_data": data,
             "signal": signal,
             "signal_strength": strength,
         }
+        if signal_error:
+            result["error"] = signal_error
+            result["error_type"] = "SignalError"
+        return result
 
     def run_chain(self, chain_name: str) -> Optional[Dict[str, Any]]:
         factor = self.instantiate(chain_name)
@@ -259,12 +328,13 @@ class FactorRunner:
                 "error_type": type(e).__name__,
             }
 
-        factor._cached_data = data
+        signal_error = None
         try:
             signal = factor.signal()
         except Exception as e:
             logger.error("因子 %s signal 失败: %s", chain_name, e)
             signal = None
+            signal_error = str(e)
 
         strength = None
         if hasattr(factor, "signal_strength"):
@@ -276,6 +346,7 @@ class FactorRunner:
         today = datetime.now().strftime("%Y-%m-%d")
         self.signal_logger.log(chain_name, signal, strength, data, as_of=today, run_id=f"{chain_name}:{today}")
 
+        ic_error = None
         if data is not None:
             try:
                 fv = extract_factor_value(data, chain_name)
@@ -285,13 +356,20 @@ class FactorRunner:
                     logger.debug("因子 %s 无有效因子值，跳过 IC 快照", chain_name)
             except Exception as e:
                 logger.warning("因子 %s IC快照失败: %s", chain_name, e)
+                ic_error = str(e)
 
-        return {
+        result = {
             "factor_data": data,
             "opportunity": signal,
             "signal_strength": strength,
             "chain_meta": self._chain_meta(chain_name),
         }
+        if signal_error:
+            result["error"] = signal_error
+            result["error_type"] = "SignalError"
+        if ic_error:
+            result.setdefault("warnings", []).append(f"IC快照失败: {ic_error}")
+        return result
 
     def _chain_meta(self, chain_name: str) -> Optional[Dict[str, Any]]:
         """Return chain-level metadata for mixed chains (trade_asset, drivers, etc.)."""
@@ -310,7 +388,7 @@ class FactorRunner:
         # Driver health: check data availability
         if drivers:
             try:
-                meta["driver_health"] = self._bus.get_driver_status(chain_def)
+                meta["driver_health"] = self._data_bus.get_driver_status(chain_def)
             except Exception:
                 pass
         return meta if meta else None

@@ -107,21 +107,27 @@ class MixedDriverFactor(BaseFactor):
                      stop_loss: float = -0.05, confidence: float = 0.5,
                      strength: float = 0.0, trigger: str = "",
                      **extra) -> Dict[str, Any]:
-        """Build a standardized signal dict with mixed chain metadata."""
-        signal = {
-            "trade_asset": asset or self.trade_asset,
-            "execution_asset": self.execution_asset,
-            "asset": asset or self.trade_asset,  # backward compat
-            "direction": direction,
-            "reason": reason,
-            "holding_days": holding_days,
-            "stop_loss": stop_loss,
-            "confidence": confidence,
-            "strength": strength,
-            "trigger": trigger,
-            "drivers_used": self._list_used_drivers(),
-            "missing_drivers": self.get_missing_drivers(),
-        }
+        """Build a standardized signal dict with mixed chain metadata.
+
+        Calls base class _make_signal to ensure trade_signal_strength,
+        factor_value, vol_stop, etc. are included.
+        """
+        # Call base class to get trade_signal_strength, factor_value, etc.
+        signal = super()._make_signal(
+            asset=asset or self.trade_asset,
+            direction=direction,
+            reason=reason,
+            holding_days=holding_days,
+            stop_loss=stop_loss,
+            confidence=confidence,
+            strength=strength,
+            trigger=trigger,
+        )
+        # Add mixed-chain specific fields
+        signal["trade_asset"] = asset or self.trade_asset
+        signal["execution_asset"] = self.execution_asset
+        signal["drivers_used"] = self._list_used_drivers()
+        signal["missing_drivers"] = self.get_missing_drivers()
         signal.update(extra)
         return signal
 

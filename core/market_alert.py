@@ -60,12 +60,12 @@ _SPOT_SOURCES: Dict[str, Dict[str, Any]] = {
     "corn": {
         "name": "玉米现货",
         "fetch": "corn",
-        "unit_factor": 2000,
+        "unit_factor": 1000,
     },
     "soybean_domestic": {
         "name": "国产大豆现货",
         "fetch": "soybean",
-        "unit_factor": 2000,
+        "unit_factor": 1000,
     },
 }
 
