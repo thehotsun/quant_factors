@@ -586,42 +586,6 @@ chains:
       - rebar_futures
 
   # ==================== 综合链条 ====================
-  full_meat_chain:
-    category: composite
-    description: 完整肉蛋粮产业链综合分析
-    sub_chains:
-      - pig_grain_ratio
-      - feed_cost
-      - crush_margin
-      - pig_chicken_spread
-      - egg_feed_ratio
-      - pork_etf
-      - soybean_meal
-      - corn
-      - soybean
-      - cbot_soybean
-  energy_chain:
-    category: composite
-    description: 能源体系综合分析（含跨体系联动）
-    sub_chains:
-      - crude_oil
-      - natural_gas
-      - oil_gas_ratio
-      - oil_gold_link
-      - forex_commodity
-  metals_chain:
-    category: composite
-    description: 金属体系综合分析（含跨体系联动）
-    sub_chains:
-      - copper
-      - aluminum
-      - rebar
-      - gold
-      - silver
-      - iron_ore
-      - copper_gold_ratio
-      - pmi_metals
-      - iron_rebar_cost
   macro_chain:
     category: composite
     description: 宏观因子综合分析（含跨体系联动）
@@ -636,6 +600,42 @@ chains:
       - oil_gold_link
       - forex_commodity
       - pmi_metals
+  energy_chain:
+    category: composite
+    description: 能源体系综合分析（含跨体系联动）
+    sub_chains:
+      - crude_oil
+      - natural_gas
+      - oil_gas_ratio
+      - oil_gold_link
+      - forex_commodity
+  full_meat_chain:
+    category: composite
+    description: 完整肉蛋粮产业链综合分析
+    sub_chains:
+      - pig_grain_ratio
+      - feed_cost
+      - crush_margin
+      - pig_chicken_spread
+      - egg_feed_ratio
+      - pork_etf
+      - soybean_meal
+      - corn
+      - soybean
+      - cbot_soybean
+  metals_chain:
+    category: composite
+    description: 金属体系综合分析（含跨体系联动）
+    sub_chains:
+      - copper
+      - aluminum
+      - rebar
+      - gold
+      - silver
+      - iron_ore
+      - copper_gold_ratio
+      - pmi_metals
+      - iron_rebar_cost
 
   # ==================== 混合信号链 ====================
   pork_stock_signal:
