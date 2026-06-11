@@ -273,7 +273,13 @@ def _format_price_position(data_bus, data_dep: str, lookback_days: int = 250) ->
     period = _period_label(pos["sample_days"])
     label = _position_label(cheaper_pct)
 
-    return f"📍 {period}：仅{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
+    # 极端位置添加标记
+    if cheaper_pct <= 10:
+        return f"📍 {period}：仅{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
+    elif cheaper_pct >= 90:
+        return f"📍 {period}：{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
+    else:
+        return f"📍 {period}：仅{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
 
 
 def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> str:

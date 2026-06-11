@@ -27,14 +27,14 @@ def recommendation_emoji(rec: str) -> str:
 def position_label(percentile: float) -> str:
     """Human-readable position label from 0–100 percentile."""
     if percentile <= 20:
-        return "接近底部区间"
+        return "★接近底部区间★"
     if percentile <= 40:
         return "偏低区间"
     if percentile <= 60:
         return "中等水平"
     if percentile <= 80:
         return "偏高区间"
-    return "接近顶部区间"
+    return "★接近顶部区间★"
 
 
 def period_label(days: int) -> str:
@@ -69,7 +69,25 @@ def format_trend(prices: List[float], key: str = None) -> str:
     pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
     fmt = lambda p: f"{p:,.0f}" if abs(p) >= 100 else (f"{p:.1f}" if abs(p) >= 10 else f"{p:.2f}")
     price_str = " → ".join(fmt(p) for p in display_prices)
-    return f"{price_str}{unit_suffix} {arrow} ({pct:+.1f}%)"
+    
+    # 涨跌幅超过阈值时添加标记
+    abs_pct = abs(pct)
+    if abs_pct >= 8:
+        # 严重涨跌：🔴 暴涨/暴跌
+        tag = "🔴"
+    elif abs_pct >= 5:
+        # 大幅涨跌：🔶 大涨/大跌
+        tag = "🔶"
+    elif abs_pct >= 3:
+        # 明显涨跌：⚠️
+        tag = "⚠️"
+    else:
+        tag = ""
+    
+    result = f"{price_str}{unit_suffix} {arrow} ({pct:+.1f}%)"
+    if tag:
+        result = f"{tag} {result}"
+    return result
 
 
 def format_chain_report(composite_results: Dict[str, Any]) -> Dict[str, Any]:
