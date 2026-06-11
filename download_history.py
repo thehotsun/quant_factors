@@ -80,7 +80,7 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil  # noqa: E402
 from data_sources.eia import fetch_eia_crude_stock  # noqa: E402
 from data_sources.macro_china import fetch_pboc_social_financing  # noqa: E402
 from data_sources.foreign import fetch_cbot_soybean  # noqa: E402
-from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot, fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot, fetch_rebar_spot, fetch_iron_ore_spot, fetch_aluminum_spot, fetch_soybean_domestic_spot  # noqa: E402
+from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_platinum_spot, fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot, fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot, fetch_rebar_spot, fetch_iron_ore_spot, fetch_aluminum_spot, fetch_soybean_domestic_spot  # noqa: E402
 from data_sources.equity import fetch_etf_hist, fetch_stock_hist  # noqa: E402
 
 
@@ -107,6 +107,7 @@ def main():
         ("螺纹钢", "RB.SHF", "rebar_futures"),
         ("黄金期货", "AU.SHF", "gold_futures"),
         ("白银期货", "AG.SHF", "silver_futures"),
+        ("铂金期货", "PT.SHF", "platinum_futures"),
         ("动力煤", "ZC.ZCE", "thermal_coal_futures"),  # 已废弃：国家限价后失去市场化定价功能
         ("铁矿石", "I.DCE", "iron_ore_futures"),
     ]
@@ -288,6 +289,13 @@ def main():
             save_parquet(silver_spot, "silver_spot")
     except Exception as e:
         print(f"  白银现货下载失败: {e}")
+
+    try:
+        platinum_spot = fetch_platinum_spot()
+        if platinum_spot is not None:
+            save_parquet(platinum_spot, "platinum_spot")
+    except Exception as e:
+        print(f"  铂金现货下载失败: {e}")
 
     # Step 12: 农产品现货（生意社，接口较慢）
     print("\n[Step 12] 下载现货数据（农产品，接口较慢请耐心等待）...")

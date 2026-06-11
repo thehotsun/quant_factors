@@ -3,8 +3,9 @@
 目前支持：
 - 生猪现货（pork_spot）：来自生意社 100ppi.com，通过 akshare futures_spot_price_daily 获取
 - 鸡肉现货（chicken_spot）：暂无稳定公开接口，继续 known_missing
-- 黄金现货基准价（gold_spot）：上海金交所，取早盘价作为日收盘参考
-- 白银现货基准价（silver_spot）：上海金交所，取早盘价作为日收盘参考
+- 黄金现货（gold_spot）：上海金交所 Au99.99，spot_hist_sge 接口，实时无延迟
+- 白银现货（silver_spot）：上海金交所 Ag99.99，spot_hist_sge 接口，实时无延迟
+- 铂金现货（platinum_spot）：上海金交所 Pt99.95，spot_hist_sge 接口，实时无延迟
 """
 
 import pandas as pd
@@ -44,60 +45,86 @@ def fetch_pork_spot(start_day="20200101", end_day=None):
 
 
 def fetch_gold_spot():
-    """获取黄金现货基准价（上海金交所）。
+    """获取黄金现货价格（上海金交所 Au99.99）。
 
-    数据来源：akshare spot_golden_benchmark_sge
-    取晚盘价作为日收盘参考（晚盘收盘更晚，是当日最后交易价格）。
+    数据来源：akshare spot_hist_sge
+    使用 close 价作为日收盘价（实时更新，无延迟）。
     """
     import akshare as ak
 
     try:
-        df = ak.spot_golden_benchmark_sge()
+        df = ak.spot_hist_sge(symbol='Au99.99')
         if df is None or df.empty:
-            print("  黄金现货基准价数据为空")
+            print("  黄金现货数据为空")
             return None
 
-        result = df[["交易时间", "晚盘价"]].copy()
-        result = result.rename(columns={"交易时间": "date", "晚盘价": "close"})
+        result = df[["date", "close"]].copy()
         result["date"] = pd.to_datetime(result["date"], errors="coerce")
         result["close"] = pd.to_numeric(result["close"], errors="coerce")
-        result["source"] = "akshare.spot_golden_benchmark_sge.晚盘价"
+        result["source"] = "akshare.spot_hist_sge:Au99.99.close"
         result = result.dropna(subset=["date", "close"]).sort_values("date")
         result.reset_index(drop=True, inplace=True)
 
-        print(f"  黄金现货基准价: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        print(f"  黄金现货(Au99.99): {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
         return result
     except Exception as e:
-        print(f"  黄金现货基准价下载失败: {e}")
+        print(f"  黄金现货下载失败: {e}")
         return None
 
 
 def fetch_silver_spot():
-    """获取白银现货基准价（上海金交所）。
+    """获取白银现货价格（上海金交所 Ag99.99）。
 
-    数据来源：akshare spot_silver_benchmark_sge
-    取晚盘价作为日收盘参考（晚盘收盘更晚，是当日最后交易价格）。
+    数据来源：akshare spot_hist_sge
+    使用 close 价作为日收盘价（实时更新，无延迟）。
     """
     import akshare as ak
 
     try:
-        df = ak.spot_silver_benchmark_sge()
+        df = ak.spot_hist_sge(symbol='Ag99.99')
         if df is None or df.empty:
-            print("  白银现货基准价数据为空")
+            print("  白银现货数据为空")
             return None
 
-        result = df[["交易时间", "晚盘价"]].copy()
-        result = result.rename(columns={"交易时间": "date", "晚盘价": "close"})
+        result = df[["date", "close"]].copy()
         result["date"] = pd.to_datetime(result["date"], errors="coerce")
         result["close"] = pd.to_numeric(result["close"], errors="coerce")
-        result["source"] = "akshare.spot_silver_benchmark_sge.晚盘价"
+        result["source"] = "akshare.spot_hist_sge:Ag99.99.close"
         result = result.dropna(subset=["date", "close"]).sort_values("date")
         result.reset_index(drop=True, inplace=True)
 
-        print(f"  白银现货基准价: {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        print(f"  白银现货(Ag99.99): {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
         return result
     except Exception as e:
-        print(f"  白银现货基准价下载失败: {e}")
+        print(f"  白银现货下载失败: {e}")
+        return None
+
+
+def fetch_platinum_spot():
+    """获取铂金现货价格（上海金交所 Pt99.95）。
+
+    数据来源：akshare spot_hist_sge
+    使用 close 价作为日收盘价（实时更新，无延迟）。
+    """
+    import akshare as ak
+
+    try:
+        df = ak.spot_hist_sge(symbol='Pt99.95')
+        if df is None or df.empty:
+            print("  铂金现货数据为空")
+            return None
+
+        result = df[["date", "close"]].copy()
+        result["date"] = pd.to_datetime(result["date"], errors="coerce")
+        result["close"] = pd.to_numeric(result["close"], errors="coerce")
+        result["source"] = "akshare.spot_hist_sge:Pt99.95.close"
+        result = result.dropna(subset=["date", "close"]).sort_values("date")
+        result.reset_index(drop=True, inplace=True)
+
+        print(f"  铂金现货(Pt99.95): {len(result)} 条, {result['date'].min().date()} ~ {result['date'].max().date()}")
+        return result
+    except Exception as e:
+        print(f"  铂金现货下载失败: {e}")
         return None
 
 

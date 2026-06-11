@@ -9,7 +9,7 @@ from data_sources.fred import fetch_fred_csv, fetch_brent_oil
 from data_sources.eia import fetch_eia_crude_stock
 from data_sources.macro_china import fetch_pboc_social_financing
 from data_sources.foreign import fetch_cbot_soybean
-from data_sources.spot import fetch_pork_spot
+from data_sources.spot import fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_platinum_spot
 from data_sources.equity import fetch_etf_hist, fetch_stock_hist
 
 __all__ = [

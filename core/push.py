@@ -178,6 +178,7 @@ _SPOT_FUTURES_PAIRS = {
     'iron_ore': ('iron_ore_futures', 'iron_ore_spot', '铁矿石'),
     'gold': ('gold_futures', 'gold_spot', '黄金'),
     'silver': ('silver_futures', 'silver_spot', '白银'),
+    'platinum': ('platinum_futures', 'platinum_spot', '铂金'),
     'corn': ('corn_futures', 'corn_spot', '玉米'),
     'soybean_meal': ('soybean_meal_futures', 'soybean_meal_spot', '豆粕'),
     'soybean': ('soybean_domestic_futures', 'soybean_domestic_spot', '国产大豆'),

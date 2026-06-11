@@ -75,7 +75,7 @@ def retry_fetch(name: str, fetcher: Callable[[], pd.DataFrame], max_retries: int
 def _refresh_spot_data(manifest):
     """刷新现货数据（生意社 soozhu + 上海金交所）。"""
     from data_sources.spot import (
-        fetch_pork_spot, fetch_gold_spot, fetch_silver_spot,
+        fetch_pork_spot, fetch_gold_spot, fetch_silver_spot, fetch_platinum_spot,
         fetch_copper_spot, fetch_corn_spot, fetch_soybean_meal_spot,
         fetch_egg_spot, fetch_soybean_oil_spot, fetch_rapeseed_meal_spot,
         fetch_rebar_spot, fetch_iron_ore_spot, fetch_aluminum_spot,
@@ -87,6 +87,7 @@ def _refresh_spot_data(manifest):
         ("生猪现货", fetch_pork_spot, "pork_spot"),
         ("黄金现货", fetch_gold_spot, "gold_spot"),
         ("白银现货", fetch_silver_spot, "silver_spot"),
+        ("铂金现货", fetch_platinum_spot, "platinum_spot"),
         ("铜现货", lambda: fetch_copper_spot(start_day="20240101"), "copper_spot"),
         ("玉米现货", lambda: fetch_corn_spot(start_day="20240101"), "corn_spot"),
         ("豆粕现货", lambda: fetch_soybean_meal_spot(start_day="20240101"), "soybean_meal_spot"),
@@ -203,6 +204,7 @@ def _save_spot_prev_close():
         "rebar": "rebar_spot",
         "gold": "gold_spot",
         "silver": "silver_spot",
+        "platinum": "platinum_spot",
         "iron_ore": "iron_ore_spot",
         "soybean_domestic": "soybean_domestic_spot",
     }
@@ -253,6 +255,7 @@ def daily_data_refresh(data_bus):
             ("螺纹钢", lambda: fetch_tushare_futures("RB.SHF", "螺纹钢"), "rebar_futures"),
             ("黄金期货", lambda: fetch_tushare_futures("AU.SHF", "黄金期货"), "gold_futures"),
             ("白银期货", lambda: fetch_tushare_futures("AG.SHF", "白银期货"), "silver_futures"),
+            ("铂金期货", lambda: fetch_tushare_futures("PT.SHF", "铂金期货"), "platinum_futures"),
             # ("动力煤期货", lambda: fetch_tushare_futures("ZC.ZCE", "动力煤期货"), "thermal_coal_futures"),  # 已废弃：国家限价后失去市场化定价功能
             ("铁矿石期货", lambda: fetch_tushare_futures("I.DCE", "铁矿石期货"), "iron_ore_futures"),
             ("美元人民币", lambda: fetch_fred_csv("DEXCHUS", "USD/CNY汇率"), "usd_cny"),
