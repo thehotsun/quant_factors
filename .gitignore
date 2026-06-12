@@ -3,10 +3,8 @@ quantenv/
 .venv/
 env/
 
-# 历史数据文件（体积大，且可从 AKShare 重新生成）
-data/*.parquet
-data/*.csv
-data/*.db
+# 运行时数据文件（可从数据源重新生成）
+data/
 
 # 日志文件
 logs/
