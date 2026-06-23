@@ -633,9 +633,98 @@ chains:
       - gold
       - silver
       - iron_ore
+      - zinc
       - copper_gold_ratio
       - pmi_metals
       - iron_rebar_cost
+  soft_chain:
+    category: composite
+    description: 软商品+化工体系综合分析（橡胶+棉花+白糖+纯碱+尿素）
+    sub_chains:
+      - rubber
+      - cotton
+      - sugar
+      - soda_ash
+      - urea
+
+  # ==================== 软商品因子 ====================
+  rubber:
+    category: soft
+    description: 橡胶：轮胎/密封件永续需求，种植周期7-10年+季节停割
+    factor_module: factors.soft.rubber
+    factor_class: RubberFactor
+    asset: 橡胶期货(RU)
+    trade_asset: 橡胶期货(RU)
+    trade_asset_type: futures
+    execution_asset: ''
+    signal_target: ''
+    drivers:
+      futures:
+        - rubber_futures
+    data_deps:
+      - rubber_futures
+  cotton:
+    category: soft
+    description: 棉花：纺织服装永续需求，全球库存消费比驱动5-7年周期+季节性
+    factor_module: factors.soft.cotton
+    factor_class: CottonFactor
+    asset: 棉花期货(CF)
+    trade_asset: 棉花期货(CF)
+    trade_asset_type: futures
+    execution_asset: ''
+    signal_target: ''
+    drivers:
+      futures:
+        - cotton_futures
+    data_deps:
+      - cotton_futures
+  sugar:
+    category: soft
+    description: 白糖：永续需求，甘蔗种植周期3-4年+全球库存消费比驱动
+    factor_module: factors.soft.sugar
+    factor_class: SugarFactor
+    asset: 白糖期货(SR)
+    trade_asset: 白糖期货(SR)
+    trade_asset_type: futures
+    execution_asset: ''
+    signal_target: ''
+    drivers:
+      futures:
+        - sugar_futures
+    data_deps:
+      - sugar_futures
+
+  # ==================== 软商品因子（橡胶/棉花/白糖/纯碱/尿素）====================
+  soda_ash:
+    category: soft
+    description: 纯碱：玻璃核心原料，光伏新增需求+环保限产→供给端周期性调整
+    factor_module: factors.soft.soda_ash
+    factor_class: SodaAshFactor
+    asset: 纯碱期货(SA)
+    trade_asset: 纯碱期货(SA)
+    trade_asset_type: futures
+    execution_asset: ''
+    signal_target: ''
+    drivers:
+      futures:
+        - soda_ash_futures
+    data_deps:
+      - soda_ash_futures
+  urea:
+    category: soft
+    description: 尿素：农业化肥永续需求，春耕/秋播季节性+煤炭成本驱动
+    factor_module: factors.soft.urea
+    factor_class: UreaFactor
+    asset: 尿素期货(UR)
+    trade_asset: 尿素期货(UR)
+    trade_asset_type: futures
+    execution_asset: ''
+    signal_target: ''
+    drivers:
+      futures:
+        - urea_futures
+    data_deps:
+      - urea_futures
 
   # ==================== 混合信号链 ====================
   pork_stock_signal:

@@ -129,7 +129,37 @@ factors:
       change_threshold: 0.03
       gold_beta: 1.2
 
-  cpi_gold:
+    rubber:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  cotton:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  sugar:
+    adaptive: true
+    params:
+      change_threshold: 0.03
+      zscore_window: 20
+
+  soda_ash:
+    adaptive: true
+    params:
+      change_threshold: 0.05
+      zscore_window: 20
+
+  urea:
+    adaptive: true
+    params:
+      change_threshold: 0.04
+      zscore_window: 20
+
+cpi_gold:
     adaptive: false
     params:
       cpi_surprise_threshold: 0.3

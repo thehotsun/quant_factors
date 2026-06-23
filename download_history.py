@@ -110,6 +110,10 @@ def main():
         ("铂金期货", "PT.SHF", "platinum_futures"),
         ("动力煤", "ZC.ZCE", "thermal_coal_futures"),  # 已废弃：国家限价后失去市场化定价功能
         ("铁矿石", "I.DCE", "iron_ore_futures"),
+        ("橡胶期货", "RU.SHF", "rubber_futures"),
+        ("棉花期货", "CF.ZCE", "cotton_futures"),
+        ("纯碱期货", "SA.ZCE", "soda_ash_futures"),
+        ("尿素期货", "UR.ZCE", "urea_futures"),
     ]
 
     for i, (name, code, filename) in enumerate(futures_map, 1):

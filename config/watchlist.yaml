@@ -31,3 +31,36 @@ groups:
       - code: "022475"
         name: "国泰畜牧养殖ETF联接E"
         type: fund
+
+  - match_label: "橡胶"
+    targets:
+      - code: "601058"
+        name: "赛轮轮胎"
+        type: stock
+      - code: "601966"
+        name: "玲珑轮胎"
+        type: stock
+
+  - match_label: "棉花"
+    targets:
+      - code: "000726"
+        name: "鲁泰A"
+        type: stock
+
+  - match_label: "白糖"
+    targets:
+      - code: "000911"
+        name: "南宁糖业"
+        type: stock
+
+  - match_label: "纯碱"
+    targets:
+      - code: "000683"
+        name: "远兴能源"
+        type: stock
+
+  - match_label: "尿素"
+    targets:
+      - code: "600691"
+        name: "阳煤化工"
+        type: stock

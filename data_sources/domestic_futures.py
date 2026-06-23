@@ -19,6 +19,11 @@ _TS_TO_SINA = {
     'AU.SHF': 'AU0',   # 黄金
     'AG.SHF': 'AG0',   # 白银
     'I.DCE': 'I0',     # 铁矿石
+    'RU.SHF': 'RU0',   # 橡胶
+    'CF.ZCE': 'CF0',   # 棉花
+    'SA.ZCE': 'SA0',   # 纯碱
+    'SR.ZCE': 'SR0',   # 白糖
+    'UR.ZCE': 'UR0',   # 尿素
 }
 
 
