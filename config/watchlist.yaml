@@ -24,43 +24,165 @@
 #   - fund 类型获取的是每日净值（非实时），最新数据通常滞后1天
 #   - etf/stock 类型获取的是收盘价，交易日当天数据在收盘后可用
 #   - 代码必须用引号包裹，避免被解析为数字丢失前导零
+#
+# 状态说明：
+#   - 未注释 = 已激活，推送时展示
+#   - 注释掉 = 观察中，价格到位后解注释激活
 
 groups:
+  # ==================== 已激活 ====================
   - match_label: "生猪"
     targets:
       - code: "022475"
         name: "国泰畜牧养殖ETF联接E"
         type: fund
 
-  - match_label: "橡胶"
-    targets:
-      - code: "601058"
-        name: "赛轮轮胎"
-        type: stock
-      - code: "601966"
-        name: "玲珑轮胎"
-        type: stock
+  # ==================== 观察中（注释掉，价格到位后解注释） ====================
 
-  - match_label: "棉花"
-    targets:
-      - code: "000726"
-        name: "鲁泰A"
-        type: stock
+  # 白银 — ETF: 白银LOF | 股票: 银矿龙头
+  # - match_label: "白银"
+  #   targets:
+  #     - code: "161226"
+  #       name: "白银LOF"
+  #       type: etf
+  #     - code: "000603"
+  #       name: "盛达资源"
+  #       type: stock
+  #     - code: "600547"
+  #       name: "山东黄金"
+  #       type: stock
 
-  - match_label: "白糖"
-    targets:
-      - code: "000911"
-        name: "南宁糖业"
-        type: stock
+  # 铜 — ETF: 有色ETF(铜权重最大) | 股票: 铜业龙头
+  # - match_label: "铜"
+  #   targets:
+  #     - code: "512400"
+  #       name: "有色金属ETF"
+  #       type: etf
+  #     - code: "600362"
+  #       name: "江西铜业"
+  #       type: stock
+  #     - code: "000630"
+  #       name: "铜陵有色"
+  #       type: stock
+  #     - code: "000878"
+  #       name: "云南铜业"
+  #       type: stock
 
-  - match_label: "纯碱"
-    targets:
-      - code: "000683"
-        name: "远兴能源"
-        type: stock
+  # 铝 — ETF: 铝ETF | 股票: 铝业龙头
+  # - match_label: "铝"
+  #   targets:
+  #     - code: "159871"
+  #       name: "铝ETF"
+  #       type: etf
+  #     - code: "601600"
+  #       name: "中国铝业"
+  #       type: stock
+  #     - code: "000807"
+  #       name: "云铝股份"
+  #       type: stock
+  #     - code: "600219"
+  #       name: "南山铝业"
+  #       type: stock
 
-  - match_label: "尿素"
-    targets:
-      - code: "600691"
-        name: "阳煤化工"
-        type: stock
+  # 螺纹钢 — 无纯正ETF，选建筑钢材龙头
+  # - match_label: "螺纹钢"
+  #   targets:
+  #     - code: "600019"
+  #       name: "宝钢股份"
+  #       type: stock
+  #     - code: "600507"
+  #       name: "方大特钢"
+  #       type: stock
+  #     - code: "000898"
+  #       name: "鞍钢股份"
+  #       type: stock
+
+  # 铁矿石 — 无纯正ETF，选铁矿石采选股
+  # - match_label: "铁矿石"
+  #   targets:
+  #     - code: "000655"
+  #       name: "金岭矿业"
+  #       type: stock
+  #     - code: "000629"
+  #       name: "钒钛股份"
+  #       type: stock
+
+  # 原油 — ETF: 原油基金 | 股票: 石油龙头
+  # - match_label: "原油"
+  #   targets:
+  #     - code: "501018"
+  #       name: "南方原油"
+  #       type: fund
+  #     - code: "601857"
+  #       name: "中国石油"
+  #       type: stock
+  #     - code: "600028"
+  #       name: "中国石化"
+  #       type: stock
+
+  # 天然气 — 无纯正A股标的，选油气相关
+  # - match_label: "天然气"
+  #   targets:
+  #     - code: "600256"
+  #       name: "广汇能源"
+  #       type: stock
+  #     - code: "603393"
+  #       name: "新天然气"
+  #       type: stock
+
+  # 鸡蛋 — 无ETF，选养殖龙头（兼营鸡蛋）
+  # - match_label: "鸡蛋"
+  #   targets:
+  #     - code: "300498"
+  #       name: "温氏股份"
+  #       type: stock
+  #     - code: "002299"
+  #       name: "圣农发展"
+  #       type: stock
+
+  # 玉米 — 无纯正ETF，选种植/饲料龙头
+  # - match_label: "玉米"
+  #   targets:
+  #     - code: "600598"
+  #       name: "北大荒"
+  #       type: stock
+  #     - code: "000930"
+  #       name: "中粮科技"
+  #       type: stock
+
+  # 豆粕 — 无纯正ETF，选压榨/饲料企业
+  # - match_label: "豆粕"
+  #   targets:
+  #     - code: "600598"
+  #       name: "北大荒"
+  #       type: stock
+  #     - code: "000930"
+  #       name: "中粮科技"
+  #       type: stock
+
+  # 菜粕 — 与豆粕高度相关，同标的选择
+  # - match_label: "菜粕"
+  #   targets:
+  #     - code: "600598"
+  #       name: "北大荒"
+  #       type: stock
+
+  # 大豆 — 选种植/加工龙头
+  # - match_label: "大豆"
+  #   targets:
+  #     - code: "600598"
+  #       name: "北大荒"
+  #       type: stock
+  #     - code: "000930"
+  #       name: "中粮科技"
+  #       type: stock
+
+  # 豆油 — 选油脂加工企业
+  # - match_label: "豆油"
+  #   targets:
+  #     - code: "002852"
+  #       name: "道道全"
+  #       type: stock
+  #     - code: "600598"
+  #       name: "北大荒"
+  #       type: stock

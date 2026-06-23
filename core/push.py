@@ -167,6 +167,13 @@ _KEY_ASSETS = {
         ('vix', None, 'VIX恐慌指数'),             # 风险情绪
         ('usd_cny', None, '美元/人民币'),        # 汇率
     ],
+    'soft_chain': [
+        ('rubber_futures', None, '橡胶'),
+        ('cotton_futures', None, '棉花'),
+        ('sugar_futures', None, '白糖'),
+        ('soda_ash_futures', None, '纯碱'),
+        ('urea_futures', None, '尿素'),
+    ],
 }
 
 # 单链条的现货/期货配对（用于 /recommend 接口）
@@ -185,6 +192,11 @@ _SPOT_FUTURES_PAIRS = {
     'soybean_oil': ('soybean_oil_futures', 'soybean_oil_spot', '豆油'),
     'rapeseed_meal': ('rapeseed_meal_futures', 'rapeseed_meal_spot', '菜粕'),
     'egg': ('egg_futures', 'egg_spot', '鸡蛋'),
+    'rubber': ('rubber_futures', None, '橡胶'),
+    'cotton': ('cotton_futures', None, '棉花'),
+    'sugar': ('sugar_futures', None, '白糖'),
+    'soda_ash': ('soda_ash_futures', None, '纯碱'),
+    'urea': ('urea_futures', None, '尿素'),
 }
 
 

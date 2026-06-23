@@ -633,7 +633,6 @@ chains:
       - gold
       - silver
       - iron_ore
-      - zinc
       - copper_gold_ratio
       - pmi_metals
       - iron_rebar_cost
