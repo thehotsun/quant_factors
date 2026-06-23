@@ -158,7 +158,7 @@ def _save_spot_prev_close():
         # (key, akshare接口名, 单位换算因子, 展示名)
         ("pork",      "spot_hog_soozhu",            1000, "生猪"),
         ("corn",      "spot_corn_price_soozhu",     1000, "玉米"),
-        ("soybean_domestic", "spot_soybean_price_soozhu", 1000, "国产大豆"),
+        # soybean_domestic 已移除：soozhu 与期货合约A品种不匹配
     ]
 
     try:
@@ -176,11 +176,20 @@ def _save_spot_prev_close():
                 if df is None or df.empty or '价格' not in df.columns:
                     continue
                 if '日期' in df.columns and len(df) >= 2:
-                    # 有历史序列：取倒数第二条作为前收盘
-                    prev_close[key] = {
-                        "price": float(df['价格'].iloc[-2]) * factor,
-                        "date": str(df['日期'].iloc[-2]),
-                    }
+                    # 有历史序列：过滤非交易日，取最近两个工作日
+                    from core.market_alert import _pick_trading_day_pair
+                    cur_row, prev_row = _pick_trading_day_pair(df)
+                    if prev_row is not None:
+                        prev_close[key] = {
+                            "price": float(prev_row['价格']) * factor,
+                            "date": str(prev_row['日期']),
+                        }
+                    elif cur_row is not None:
+                        # 只找到一行，用当日价格
+                        prev_close[key] = {
+                            "price": float(cur_row['价格']) * factor,
+                            "date": str(cur_row['日期']),
+                        }
                 else:
                     # 只有省份数据（如生猪）：取各省均价作为基准
                     prev_close[key] = {

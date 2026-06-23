@@ -62,11 +62,8 @@ _SPOT_SOURCES: Dict[str, Dict[str, Any]] = {
         "fetch": "corn",
         "unit_factor": 1000,
     },
-    "soybean_domestic": {
-        "name": "国产大豆现货",
-        "fetch": "soybean",
-        "unit_factor": 1000,
-    },
+    # soybean_domestic 已移除：soozhu 报价（~3180元/吨）与期货合约A现货价（4505元/吨）
+    # 品种/等级不同，数据源不可比，且 soozhu 周末数据波动异常。
 }
 
 # ── 加载配置 ──────────────────────────────────────────────
@@ -246,6 +243,34 @@ def _fetch_realtime_prices() -> Dict[str, Dict[str, float]]:
     return result
 
 
+# ── soozhu 交易日过滤 ──────────────────────────────────────
+
+def _pick_trading_day_pair(df):
+    """从 soozhu 历史序列中选取最近两个交易日的数据行。
+
+    跳过周六(5)和周日(6)，从最后一行往前找：
+    - 第一个工作日 = 当日价格
+    - 第二个工作日 = 前收价格
+    """
+    from datetime import datetime as _dt
+    weekdays_ok = {0, 1, 2, 3, 4}  # Mon-Fri
+    cur = None
+    prev = None
+    for i in range(len(df) - 1, -1, -1):
+        try:
+            d = _dt.strptime(str(df['日期'].iloc[i]), '%Y-%m-%d')
+        except (ValueError, TypeError):
+            continue
+        if d.weekday() not in weekdays_ok:
+            continue
+        if cur is None:
+            cur = df.iloc[i]
+        elif prev is None:
+            prev = df.iloc[i]
+            break
+    return cur, prev
+
+
 # ── 现货实时行情获取 ──────────────────────────────────────
 
 def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
@@ -261,33 +286,22 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
     except Exception as e:
         logger.debug("获取生猪现货失败: %s", e)
 
-    # 玉米现货：soozhu 有历史序列，自对比
+    # 玉米现货：soozhu 有历史序列，自对比（过滤非交易日）
     try:
         df = ak.spot_corn_price_soozhu()
-        if df is not None and len(df) >= 2 and '价格' in df.columns:
+        if df is not None and len(df) >= 2 and '价格' in df.columns and '日期' in df.columns:
             factor = _SPOT_SOURCES["corn"]["unit_factor"]
-            prev_date = str(df['日期'].iloc[-2]) if '日期' in df.columns else ""
-            result["corn"] = {
-                "price": float(df['价格'].iloc[-1]) * factor,
-                "prev_close": float(df['价格'].iloc[-2]) * factor,
-                "prev_date": prev_date,
-            }
+            cur_row, prev_row = _pick_trading_day_pair(df)
+            if cur_row is not None and prev_row is not None:
+                result["corn"] = {
+                    "price": float(cur_row['价格']) * factor,
+                    "prev_close": float(prev_row['价格']) * factor,
+                    "prev_date": str(prev_row['日期']),
+                }
     except Exception as e:
         logger.debug("获取玉米现货失败: %s", e)
 
-    # 国产大豆现货：soozhu 有历史序列，自对比
-    try:
-        df = ak.spot_soybean_price_soozhu()
-        if df is not None and len(df) >= 2 and '价格' in df.columns:
-            factor = _SPOT_SOURCES["soybean_domestic"]["unit_factor"]
-            prev_date = str(df['日期'].iloc[-2]) if '日期' in df.columns else ""
-            result["soybean_domestic"] = {
-                "price": float(df['价格'].iloc[-1]) * factor,
-                "prev_close": float(df['价格'].iloc[-2]) * factor,
-                "prev_date": prev_date,
-            }
-    except Exception as e:
-        logger.debug("获取国产大豆现货失败: %s", e)
+    # soybean_domestic 已移除（品种不匹配，详见 _SPOT_SOURCES 注释）
 
     return result
 
