@@ -66,3 +66,18 @@ def push_daily_composite_reports(app, chains_config, run_composite_chain, data_b
 
         logger.info("每日推送完成: %d/%d 个链条推送成功", success_count, len(composite_chains))
         return success_count
+
+
+def push_watchlist_report(data_bus) -> bool:
+    """推送关注标的看板（watchlist.yaml）。"""
+    try:
+        from core.watchlist_report import generate_watchlist_report
+        content = generate_watchlist_report(data_bus)
+        if not content:
+            return False
+        push_mgr = get_push_manager()
+        push_result = push_mgr.send("每日看板", content)
+        return any(push_result.values())
+    except Exception as e:
+        logger.error("推送关注标的看板失败: %s", e)
+        return False

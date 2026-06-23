@@ -323,6 +323,39 @@ def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> st
                     spot_trend = format_trend(spot_prices, key=spot_dep)
                     price_context.append({"label": f"{label}现货", "trend": spot_trend, "position": ""})
 
+            # 追加看板关联标的（按资产标签匹配）
+            try:
+                from core.watchlist_report import get_watchlist_targets_for_label, _fetch_target
+                wl_targets = get_watchlist_targets_for_label(label)
+                for t in wl_targets:
+                    code = t.get("code", "")
+                    tname = t.get("name", code)
+                    kind = t.get("type", "stock")
+                    data = _fetch_target(code, kind)
+                    if data and data.get("price") is not None:
+                        # 5日趋势（与期货/现货同格式）
+                        recent5 = data.get("recent5", [])
+                        if recent5 and len(recent5) >= 2:
+                            trend_str = format_trend(recent5)
+                        else:
+                            trend_str = f"{data['price']:.4f}  {data['chg_pct']:+.2f}%"
+                        # 百分位位置
+                        pos_str = ""
+                        if data.get("percentile") is not None:
+                            pct = data["percentile"]
+                            lbl = position_label(pct)
+                            days = data.get("data_days", 0)
+                            if days >= 250:
+                                period = f"近{days // 250}年"
+                            elif days >= 20:
+                                period = f"近{days}天"
+                            else:
+                                period = f"共{days}天"
+                            pos_str = f"📍 {period}：仅{pct:.0f}%的交易日比现在更便宜（{lbl}）"
+                        price_context.append({"label": f"{tname}({code})", "trend": trend_str, "position": pos_str})
+            except Exception:
+                pass
+
     if aggregated:
         rec = RecommendationEngine.from_aggregated(aggregated)
         return format_recommendation_report(

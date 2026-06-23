@@ -1,0 +1,33 @@
+# 关注标的看板配置
+#
+# 用途：在每日推送的链条报告中，将你关注的基金/股票追加到对应资产的价格区域下面。
+# 格式与期货/现货完全一致：5日连续价格 + 涨跌幅 + 位置提示。
+#
+# 添加新标的步骤：
+#   1. 在 groups 下找到对应的 match_label（如"生猪"、"鸡蛋"、"黄金"）
+#   2. 在 targets 下按格式添加：
+#      - code: "基金/股票代码"    # 6位数字
+#      - name: "显示名称"         # 推送消息里显示的名字
+#      - type: fund               # fund=场外基金  etf=ETF  stock=A股
+#   3. 如果没有对应的 match_label，新建一个 group：
+#      - match_label: "标签名"    # 必须与 chains.yaml 里 _KEY_ASSETS 的标签一致
+#        targets:
+#          - code: "xxx"
+#            name: "xxx"
+#            type: fund/etf/stock
+#
+# 数据来源：
+#   - fund: akshare fund_open_fund_info_em（天天基金净值）
+#   - etf/stock: akshare stock_zh_a_hist_tx（腾讯行情）
+#
+# 注意：
+#   - fund 类型获取的是每日净值（非实时），最新数据通常滞后1天
+#   - etf/stock 类型获取的是收盘价，交易日当天数据在收盘后可用
+#   - 代码必须用引号包裹，避免被解析为数字丢失前导零
+
+groups:
+  - match_label: "生猪"
+    targets:
+      - code: "022475"
+        name: "国泰畜牧养殖ETF联接E"
+        type: fund

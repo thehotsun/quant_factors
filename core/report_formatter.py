@@ -161,23 +161,16 @@ def format_chain_report_markdown(report: Dict[str, Any], price_context: List[Dic
     """Render a structured report dict to markdown for push messages."""
     lines = []
     chain = report.get("chain", "未知")
-    desc = report.get("description", "")
     agg = report.get("aggregated")
 
-    lines.append(f"**{chain}** - {desc}")
+    lines.append(f"**{chain}**")
     lines.append("")
 
     if agg:
         emoji = direction_emoji(agg["direction"])
-        lines.append(f"{emoji} **综合信号: {agg['direction']}** | 强度: {agg['strength']:.2f} | 置信度: {agg['confidence']:.2f}")
-        line2 = f"信号数: {agg['signal_count']} (BUY:{agg['buy_count']} SELL:{agg['sell_count']})"
-        if agg.get("conflict_score") is not None:
-            line2 += f" | 冲突度: {agg['conflict_score']:.2f}"
-        if agg.get("dedup_applied"):
-            line2 += " | 已去重"
-        lines.append(line2)
+        lines.append(f"{emoji} **综合信号: {agg['direction']}**")
     else:
-        lines.append("⚪ 综合信号: HOLD（无有效信号）")
+        lines.append("⚪ 综合信号: HOLD")
 
     if price_context:
         lines.append("")
@@ -191,21 +184,7 @@ def format_chain_report_markdown(report: Dict[str, Any], price_context: List[Dic
                 line += f"\n  {position}"
             lines.append(line)
 
-    signals = report.get("signals", [])
-    if signals:
-        lines.append("")
-        lines.append("**活跃信号:**")
-        for s in signals:
-            emoji = direction_emoji(s["direction"])
-            line = f"- {emoji} **{s['trigger']}** ({s['direction']}): {s['reason']}"
-            # Mixed chain: show drivers
-            drivers_used = s.get("drivers_used", [])
-            missing = s.get("missing_drivers", [])
-            if drivers_used:
-                line += f"\n  📎 驱动: {', '.join(drivers_used)}"
-            if missing:
-                line += f"\n  ⚠️ 缺失: {', '.join(missing)}"
-            lines.append(line)
+
 
     errors = report.get("errors", [])
     if errors:
@@ -225,23 +204,8 @@ def format_recommendation_report(recommendation: Dict[str, Any], chain_name: str
     """
     lines = []
 
-    rec = recommendation.get("recommendation", "HOLD")
-    label = recommendation.get("label", "建议观望")
-    emoji = recommendation_emoji(rec)
-    strength = recommendation.get("strength", 0)
-    confidence = recommendation.get("confidence", 0)
-    reason = recommendation.get("reason", "")
-
     if chain_name:
         lines.append(f"**{chain_name}**")
-    if description:
-        lines.append(f"_{description}_")
-    lines.append("")
-
-    # Main recommendation
-    lines.append(f"{emoji} **{label}** | 强度: {strength:.2f} | 置信度: {confidence:.2f}")
-    if reason:
-        lines.append(f"📌 原因: {reason}")
     lines.append("")
 
     # Price context
@@ -255,53 +219,5 @@ def format_recommendation_report(recommendation: Dict[str, Any], chain_name: str
             if position:
                 line += f"\n  {position}"
             lines.append(line)
-        lines.append("")
-
-    # Components (top signals)
-    components = recommendation.get("components", [])
-    if components:
-        lines.append("📎 **信号组成:**")
-        for comp in components[:8]:
-            trigger = comp.get("trigger", comp.get("name", ""))
-            comp_dir = comp.get("direction", "")
-            comp_str = comp.get("strength", 0)
-            if trigger and comp_dir:
-                comp_emoji = direction_emoji(comp_dir)
-                lines.append(f"- {comp_emoji} {trigger} ({comp_dir}, 强度{comp_str:.2f})")
-            elif trigger:
-                lines.append(f"- {trigger}: {comp.get('value', '')}")
-        lines.append("")
-
-    # Drivers
-    drivers_used = recommendation.get("drivers_used", [])
-    missing = recommendation.get("missing_drivers", [])
-    if drivers_used:
-        lines.append(f"📎 驱动: {', '.join(drivers_used)}")
-    if missing:
-        lines.append(f"⚠️ 缺失驱动: {', '.join(missing)}")
-
-    # Data notes
-    data_notes = recommendation.get("data_notes", [])
-    if data_notes:
-        lines.append("")
-        lines.append("📋 **数据说明:**")
-        for note in data_notes:
-            lines.append(f"- {note}")
-
-    # Conflict notes
-    conflict_notes = recommendation.get("conflict_notes", [])
-    if conflict_notes:
-        lines.append("")
-        lines.append("⚡ **信号冲突:**")
-        for note in conflict_notes:
-            lines.append(f"- {note}")
-
-    # Risk notes
-    risk_notes = recommendation.get("risk_notes", [])
-    if risk_notes:
-        lines.append("")
-        lines.append("⚠️ **风险提示:**")
-        for note in risk_notes:
-            lines.append(f"- {note}")
 
     return "\n".join(lines)
