@@ -201,6 +201,22 @@ class FactorRunner:
         # Prefer ChainDefinition for metadata; fall back to raw config
         chain_def = self.chain_defs.get(chain_name)
         cfg = self.chains_config.get(chain_name)
+
+        # Check for experimental/deprecated factors and warn
+        if chain_def is not None:
+            status = getattr(chain_def, 'status', None) or (cfg or {}).get('status')
+            missing_deps = [d for d in (getattr(chain_def, 'data_deps', None) or [])
+                           if self._data_bus.get(d) is None]
+            if status == 'experimental' and missing_deps:
+                logger.warning(
+                    "因子 %s 标记为 experimental 且缺少数据依赖 %s，将返回空结果。"
+                    "原因详见 factors/ 目录下对应文件的模块文档字符串。",
+                    chain_name, missing_deps
+                )
+        elif cfg:
+            status = cfg.get('status')
+            if status == 'experimental':
+                logger.warning("因子 %s 标记为 experimental，将返回空结果。", chain_name)
         if chain_def is not None:
             if chain_def.is_composite or not chain_def.has_factor:
                 return None

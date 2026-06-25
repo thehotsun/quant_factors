@@ -14,9 +14,12 @@
 │   chicken_spot 暂未接入：尚未找到稳定公开接口；禁止用网页 HTML 解析或替代口径冒充。 │
 └─────────────────────────────────────────────────────────────────────┘
 """
+import logging
 from typing import Optional, Dict, Any
 from factors.mixed.base import MixedDriverFactor
 from core.factor_registry import FactorRegistry
+
+logger = logging.getLogger(__name__)
 
 
 @FactorRegistry.register(
@@ -51,6 +54,14 @@ class PigChickenSpread(MixedDriverFactor):
         chicken_df = spot.get("chicken_spot")
         if chicken_df is None:
             chicken_df = self.load("chicken_spot")
+
+        if chicken_df is None:
+            logger.warning(
+                "[pig_chicken_spread] chicken_spot 数据不可用，因子返回空结果。"
+                "原因：未找到稳定公开的鸡肉现货历史接口。"
+                "禁止用网页 HTML 解析或白条鸡批发价冒充白羽肉鸡棚前价。"
+                "详见 pig_chicken_spread.py 模块文档字符串。"
+            )
 
         if chicken_df is not None and len(chicken_df) >= 2:
             col = 'value' if 'value' in chicken_df.columns else 'close'
