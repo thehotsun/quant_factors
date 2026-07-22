@@ -575,17 +575,20 @@ def _get_realtime_price(symbol: str) -> Optional[float]:
     """获取实时价格（期货/现货/股票）。"""
     import akshare as ak
     
-    # 期货
-    if not symbol.startswith("spot_") and not symbol.isdigit():
+    # 股票（A 股）- 优先判断，避免被期货分支拦截
+    if symbol.startswith("sz") or symbol.startswith("sh"):
         try:
-            df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
-            if df is not None and not df.empty and 'current_price' in df.columns:
-                return float(df['current_price'].iloc[0])
+            df = ak.stock_zh_a_spot()
+            if df is not None and not df.empty and '代码' in df.columns:
+                row = df[df['代码'] == symbol]
+                if not row.empty and '最新价' in row.columns:
+                    return float(row['最新价'].iloc[0])
         except Exception as e:
-            logger.debug("获取期货 %s 价格失败：%s", symbol, e)
+            logger.debug("获取股票 %s 价格失败：%s", symbol, e)
+        return None
     
     # 现货
-    elif symbol.startswith("spot_"):
+    if symbol.startswith("spot_"):
         spot_key = symbol.replace("spot_", "")
         if spot_key == "pork":
             try:
@@ -601,20 +604,10 @@ def _get_realtime_price(symbol: str) -> Optional[float]:
                     return float(df['价格'].iloc[-1]) * 1000
             except Exception as e:
                 logger.debug("获取玉米现货价格失败：%s", e)
-    
-    # 股票（A 股）
-    elif symbol.startswith("sz") or symbol.startswith("sh"):
-        try:
-            df = ak.stock_zh_a_spot()
-            if df is not None and not df.empty and '代码' in df.columns:
-                row = df[df['代码'] == symbol]
-                if not row.empty and '最新价' in row.columns:
-                    return float(row['最新价'].iloc[0])
-        except Exception as e:
-            logger.debug("获取股票 %s 价格失败：%s", symbol, e)
+        return None
     
     # 股票（A 股，纯数字代码）
-    elif symbol.isdigit():
+    if symbol.isdigit():
         try:
             df = ak.stock_zh_a_spot()
             if df is not None and not df.empty:
@@ -628,6 +621,15 @@ def _get_realtime_price(symbol: str) -> Optional[float]:
                     return float(row['最新价'].iloc[0])
         except Exception as e:
             logger.debug("获取股票 %s 价格失败：%s", symbol, e)
+        return None
+    
+    # 期货（最后判断，排除法）
+    try:
+        df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
+        if df is not None and not df.empty and 'current_price' in df.columns:
+            return float(df['current_price'].iloc[0])
+    except Exception as e:
+        logger.debug("获取期货 %s 价格失败：%s", symbol, e)
     
     return None
 
