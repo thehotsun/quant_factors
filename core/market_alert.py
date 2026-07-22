@@ -572,22 +572,18 @@ def _save_price_alert_state(state: Dict[str, Any]):
 
 
 def _get_realtime_price(symbol: str) -> Optional[float]:
-    """获取实时价格（期货/现货/股票）。"""
+    """获取实时价格（期货/现货/股票）。
+    
+    符号规范：
+    - 期货：新浪期货代码（如 AU0=黄金，AG0=白银，LH0=生猪）
+    - 现货：spot_ 前缀（如 spot_pork=生猪现货，spot_corn=玉米现货）
+    - 股票：
+      - 带市场前缀：sz/sh/SZ/SH + 6 位代码（如 sz002714, SH600519）
+      - 纯数字：6 位股票代码（如 002714, 600519，自动识别市场）
+    """
     import akshare as ak
     
-    # 股票（A 股）- 优先判断，避免被期货分支拦截
-    if symbol.startswith("sz") or symbol.startswith("sh"):
-        try:
-            df = ak.stock_zh_a_spot()
-            if df is not None and not df.empty and '代码' in df.columns:
-                row = df[df['代码'] == symbol]
-                if not row.empty and '最新价' in row.columns:
-                    return float(row['最新价'].iloc[0])
-        except Exception as e:
-            logger.debug("获取股票 %s 价格失败：%s", symbol, e)
-        return None
-    
-    # 现货
+    # ── 现货（明确前缀）─────────────────────────────────────
     if symbol.startswith("spot_"):
         spot_key = symbol.replace("spot_", "")
         if spot_key == "pork":
@@ -606,24 +602,44 @@ def _get_realtime_price(symbol: str) -> Optional[float]:
                 logger.debug("获取玉米现货价格失败：%s", e)
         return None
     
-    # 股票（A 股，纯数字代码）
-    if symbol.isdigit():
+    # ── 股票（支持前缀或纯数字）────────────────────────────────
+    stock_prefix_lower = symbol[:2].lower() if len(symbol) >= 2 else ""
+    
+    # 判断是否为股票：sz/sh 前缀 或 纯数字
+    is_stock = stock_prefix_lower in ('sz', 'sh') or (symbol.isdigit() and len(symbol) <= 6)
+    
+    if is_stock:
         try:
             df = ak.stock_zh_a_spot()
-            if df is not None and not df.empty:
-                # 尝试 6 位代码匹配
+            if df is None or df.empty or '代码' not in df.columns:
+                return None
+            
+            # 标准化股票代码格式
+            if symbol.isdigit():
+                # 纯数字 → 根据开头自动判断市场（00/30= 深圳，60/68= 上海）
                 code_6 = symbol.zfill(6)
-                if '代码' in df.columns:
-                    row = df[df['代码'] == code_6]
+                if code_6.startswith(('00', '30')):
+                    code_to_match = 'sz' + code_6
+                elif code_6.startswith(('60', '68')):
+                    code_to_match = 'sh' + code_6
                 else:
-                    row = df[df.iloc[:, 0].astype(str) == code_6]
-                if not row.empty and '最新价' in row.columns:
-                    return float(row['最新价'].iloc[0])
+                    code_to_match = code_6
+            else:
+                # 带前缀 → 标准化为小写前缀 +6 位数字
+                prefix = stock_prefix_lower
+                code_part = symbol[2:].lstrip('0')  # 移除前导零
+                code_to_match = prefix + code_part.zfill(6)
+            
+            # 匹配代码
+            row = df[df['代码'] == code_to_match]
+            if not row.empty and '最新价' in row.columns:
+                return float(row['最新价'].iloc[0])
         except Exception as e:
             logger.debug("获取股票 %s 价格失败：%s", symbol, e)
         return None
     
-    # 期货（最后判断，排除法）
+    # ── 期货（剩余的都算期货）────────────────────────────────
+    # 注意：这里用排除法是安全的，因为现货和股票已经明确判断
     try:
         df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
         if df is not None and not df.empty and 'current_price' in df.columns:
