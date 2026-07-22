@@ -534,6 +534,261 @@ def _process_alert(symbol: str, name: str, price: float, prev: float,
     # 情况4：未触发且无历史告警 → 跳过
 
 
+# ── 价格触及告警 ──────────────────────────────────────────
+
+_PRICE_ALERT_CONFIG_PATH = Path(__file__).parent.parent / "config" / "price_alerts.yaml"
+_PRICE_ALERT_STATE_PATH = Path(DATA_DIR) / "price_alert_state.json"
+
+
+def _load_price_alert_config() -> Dict[str, Any]:
+    """加载价格告警配置。"""
+    try:
+        import yaml
+        if _PRICE_ALERT_CONFIG_PATH.exists():
+            with open(_PRICE_ALERT_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+                return {str(a["id"]): a for a in data.get("alerts", [])}
+    except Exception as e:
+        logger.error("加载价格告警配置失败：%s", e)
+    return {}
+
+
+def _load_price_alert_state() -> Dict[str, Any]:
+    """加载价格告警状态。"""
+    try:
+        if _PRICE_ALERT_STATE_PATH.exists():
+            return json.loads(_PRICE_ALERT_STATE_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_price_alert_state(state: Dict[str, Any]):
+    """保存价格告警状态。"""
+    try:
+        _PRICE_ALERT_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+    except Exception as e:
+        logger.warning("保存价格告警状态失败：%s", e)
+
+
+def _get_realtime_price(symbol: str) -> Optional[float]:
+    """获取实时价格（期货/现货/股票）。"""
+    import akshare as ak
+    
+    # 期货
+    if not symbol.startswith("spot_") and not symbol.isdigit():
+        try:
+            df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
+            if df is not None and not df.empty and 'current_price' in df.columns:
+                return float(df['current_price'].iloc[0])
+        except Exception as e:
+            logger.debug("获取期货 %s 价格失败：%s", symbol, e)
+    
+    # 现货
+    elif symbol.startswith("spot_"):
+        spot_key = symbol.replace("spot_", "")
+        if spot_key == "pork":
+            try:
+                df = ak.spot_hog_soozhu()
+                if df is not None and not df.empty and '价格' in df.columns:
+                    return float(df['价格'].mean()) * 1000
+            except Exception as e:
+                logger.debug("获取生猪现货价格失败：%s", e)
+        elif spot_key == "corn":
+            try:
+                df = ak.spot_corn_price_soozhu()
+                if df is not None and len(df) >= 1 and '价格' in df.columns:
+                    return float(df['价格'].iloc[-1]) * 1000
+            except Exception as e:
+                logger.debug("获取玉米现货价格失败：%s", e)
+    
+    # 股票（A 股）
+    elif symbol.isdigit():
+        try:
+            df = ak.stock_zh_a_spot()
+            if df is not None and not df.empty:
+                row = df[df['code'] == symbol]
+                if not row.empty and '最新价' in row.columns:
+                    return float(row['最新价'].iloc[0])
+        except Exception as e:
+            logger.debug("获取股票 %s 价格失败：%s", symbol, e)
+    
+    return None
+
+
+def _check_price_condition(current_price: float, target_price: float, condition: str) -> bool:
+    """检查价格是否满足触发条件。"""
+    if condition == "above":
+        return current_price >= target_price
+    elif condition == "below":
+        return current_price <= target_price
+    return False
+
+
+def _should_reset_alert(alert: Dict, current_price: float) -> bool:
+    """判断是否应该重置告警（价格反向运动）。"""
+    if not alert.get('auto_reset', False):
+        return False
+    
+    target = alert['target_price']
+    last_triggered_price = alert.get('last_triggered_price')
+    if last_triggered_price is None:
+        return False
+    
+    # 如果是"高于"条件，价格跌回目标价以下 2% 可重置
+    if alert['condition'] == 'above':
+        reset_threshold = target * 0.98
+        return current_price <= reset_threshold
+    
+    # 如果是"低于"条件，价格涨回目标价以上 2% 可重置
+    elif alert['condition'] == 'below':
+        reset_threshold = target * 1.02
+        return current_price >= reset_threshold
+    
+    return False
+
+
+def check_price_alerts(push_fn=None) -> List[Dict[str, Any]]:
+    """检查价格触及告警。"""
+    if not _is_trading_session():
+        logger.debug("非交易时段，跳过价格告警检查")
+        return []
+    
+    from core.trading_calendar import is_trading_day
+    if not is_trading_day():
+        logger.debug("非交易日，跳过价格告警检查")
+        return []
+    
+    config = _load_price_alert_config()
+    state = _load_price_alert_state()
+    triggered = []
+    
+    for alert_id, alert in config.items():
+        if not alert.get('active', False):
+            continue
+        
+        symbol = alert['symbol']
+        name = alert['name']
+        target_price = alert['target_price']
+        condition = alert['condition']
+        max_triggers = alert.get('max_triggers', 1)
+        
+        # 获取状态
+        alert_state = state.get(alert_id, {})
+        trigger_count = alert_state.get('trigger_count', 0)
+        
+        # 检查是否已达到最大触发次数
+        if trigger_count >= max_triggers:
+            # 检查是否需要自动重置
+            current_price = _get_realtime_price(symbol)
+            if current_price and _should_reset_alert(alert, current_price):
+                # 重置状态
+                state[alert_id] = {
+                    'trigger_count': 0,
+                    'last_triggered_at': None,
+                    'last_price': None,
+                }
+                _save_price_alert_state(state)
+                logger.info("价格告警 %s (%s) 已自动重置", name, symbol)
+            continue
+        
+        # 获取实时价格
+        current_price = _get_realtime_price(symbol)
+        if current_price is None:
+            logger.debug("无法获取 %s (%s) 的实时价格", name, symbol)
+            continue
+        
+        # 检查价格条件
+        if _check_price_condition(current_price, target_price, condition):
+            # 触发告警
+            trigger_count += 1
+            state[alert_id] = {
+                'trigger_count': trigger_count,
+                'last_triggered_at': datetime.now().isoformat(),
+                'last_price': current_price,
+            }
+            
+            # 如果达到最大触发次数，禁用告警
+            if trigger_count >= max_triggers:
+                # 更新配置文件（标记为 inactive）
+                alert['active'] = False
+                _save_price_alert_config_after_trigger(alert_id)
+            
+            _save_price_alert_state(state)
+            
+            # 推送告警
+            if push_fn:
+                _push_price_alert(push_fn, alert, current_price, target_price, trigger_count, max_triggers)
+            
+            triggered.append({
+                'symbol': symbol,
+                'name': name,
+                'price': current_price,
+                'target_price': target_price,
+                'condition': condition,
+            })
+            logger.info("价格告警触发：%s (%s) 当前价=%.2f 目标价=%.2f", name, symbol, current_price, target_price)
+    
+    return triggered
+
+
+def _save_price_alert_config_after_trigger(alert_id: str):
+    """触发后更新配置文件（将 active 设为 false）。"""
+    try:
+        import yaml
+        if _PRICE_ALERT_CONFIG_PATH.exists():
+            with open(_PRICE_ALERT_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            
+            for alert in data.get('alerts', []):
+                if str(alert['id']) == alert_id:
+                    alert['active'] = False
+                    break
+            
+            with open(_PRICE_ALERT_CONFIG_PATH, "w", encoding="utf-8") as f:
+                yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+    except Exception as e:
+        logger.error("更新告警配置失败：%s", e)
+
+
+def _push_price_alert(push_fn, alert: Dict, current_price: float, target_price: float, 
+                      trigger_count: int, max_triggers: int):
+    """推送价格触及告警。"""
+    name = alert['name']
+    symbol = alert['symbol']
+    condition = alert['condition']
+    condition_str = "≥" if condition == "above" else "≤"
+    
+    title = f"🎯 价格触及告警 ({trigger_count}/{max_triggers})"
+    
+    price_str = _format_price(current_price, symbol)
+    target_str = _format_price(target_price, symbol)
+    unit = _format_price_unit(symbol)
+    unit_suffix = f" {unit}" if unit else ""
+    
+    lines = [
+        f"**{name}** 触及目标价",
+        f"当前价：{price_str}{unit_suffix}",
+        f"目标价：{target_str}{unit_suffix}",
+        f"条件：{condition_str} {target_str}",
+    ]
+    
+    if trigger_count >= max_triggers:
+        lines.append("")
+        lines.append("⚠️ 此为一次性告警，已自动禁用")
+        lines.append("如需重新启用，请编辑配置文件并设置 active=true")
+    
+    lines.append("")
+    lines.append(f"时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    
+    content = "\n".join(lines)
+    
+    try:
+        push_fn(title, content)
+    except Exception as e:
+        logger.error("推送价格告警失败：%s", e)
+
+
 # ── 定时任务入口 ──────────────────────────────────────────
 
 def run_market_alert_check():
@@ -545,6 +800,11 @@ def run_market_alert_check():
         results = mgr.send(title, content)
         return any(results.values())
 
+    # 检查异动告警
     alerts = check_market_alerts(push_fn=_push)
-    if not alerts:
+    
+    # 检查价格触及告警
+    price_alerts = check_price_alerts(push_fn=_push)
+    
+    if not alerts and not price_alerts:
         logger.debug("本轮异动检查：无告警")

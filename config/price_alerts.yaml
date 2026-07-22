@@ -1,0 +1,58 @@
+# 价格触及告警配置
+#
+# 功能：当品种价格触及目标价时触发一次性告警
+#
+# 配置说明：
+# - id: 告警唯一标识（整数）
+# - symbol: 品种代码（期货用 akshare 代码，现货用 spot_xxx，股票用代码）
+# - name: 品种显示名称
+# - target_price: 目标价格
+# - condition: 触发条件（above=高于，below=低于）
+# - active: 是否启用（true/false）
+# - max_triggers: 最大触发次数（默认 1，一次性告警）
+# - auto_reset: 是否自动重置（true=价格反向运动后重新启用，false=需手动重置）
+#
+# 状态管理：
+# - 触发次数、上次触发时间等状态存储在 data/price_alert_state.json
+# - 触发后自动设置 active=false，需手动改回 true 重新启用
+
+alerts:
+  # 示例 1：黄金期货突破告警
+  - id: 1
+    symbol: AU0
+    name: 黄金期货
+    target_price: 580
+    condition: "above"
+    active: true
+    max_triggers: 1
+    auto_reset: false
+
+  # 示例 2：白银期货跌破告警
+  - id: 2
+    symbol: AG0
+    name: 白银期货
+    target_price: 7500
+    condition: "below"
+    active: true
+    max_triggers: 1
+    auto_reset: false
+
+  # 示例 3：生猪现货跌破告警
+  - id: 3
+    symbol: spot_pork
+    name: 生猪现货
+    target_price: 15000
+    condition: "below"
+    active: true
+    max_triggers: 1
+    auto_reset: false
+
+  # 黄金期货跌破告警（用户添加）
+  - id: 4
+    symbol: AU0
+    name: 黄金期货
+    target_price: 850
+    condition: "below"
+    active: true
+    max_triggers: 1
+    auto_reset: false
