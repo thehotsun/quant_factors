@@ -603,11 +603,27 @@ def _get_realtime_price(symbol: str) -> Optional[float]:
                 logger.debug("获取玉米现货价格失败：%s", e)
     
     # 股票（A 股）
+    elif symbol.startswith("sz") or symbol.startswith("sh"):
+        try:
+            df = ak.stock_zh_a_spot()
+            if df is not None and not df.empty and '代码' in df.columns:
+                row = df[df['代码'] == symbol]
+                if not row.empty and '最新价' in row.columns:
+                    return float(row['最新价'].iloc[0])
+        except Exception as e:
+            logger.debug("获取股票 %s 价格失败：%s", symbol, e)
+    
+    # 股票（A 股，纯数字代码）
     elif symbol.isdigit():
         try:
             df = ak.stock_zh_a_spot()
             if df is not None and not df.empty:
-                row = df[df['code'] == symbol]
+                # 尝试 6 位代码匹配
+                code_6 = symbol.zfill(6)
+                if '代码' in df.columns:
+                    row = df[df['代码'] == code_6]
+                else:
+                    row = df[df.iloc[:, 0].astype(str) == code_6]
                 if not row.empty and '最新价' in row.columns:
                     return float(row['最新价'].iloc[0])
         except Exception as e:

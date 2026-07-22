@@ -56,3 +56,13 @@ alerts:
     active: true
     max_triggers: 1
     auto_reset: false
+
+  # 牧原股份跌破告警（用户添加）
+  - id: 5
+    symbol: "sz002714"
+    name: 牧原股份
+    target_price: 30
+    condition: "below"
+    active: true
+    max_triggers: 1
+    auto_reset: false
