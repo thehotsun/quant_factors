@@ -24,6 +24,14 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@system_bp.route('/freshness', methods=['GET'])
+def freshness():
+    """数据新鲜度巡检（不推送），供监控与手动测试。"""
+    from core.data_refresh import check_data_freshness
+    problems = check_data_freshness(push=False)
+    return jsonify({"ok": not problems, "problems": problems})
+
+
 @system_bp.route('/chains', methods=['GET'])
 def list_chains():
     svc = _get_services()

@@ -49,9 +49,12 @@ def period_label(days: int) -> str:
 
 def format_trend(prices: List[float], key: str = None) -> str:
     """Format a price list as a trend string with arrow and pct change.
-
+    
+    Displays all prices (5-day sequence), but calculates pct change based on 
+    last 2 days (yesterday → today).
+    
     Args:
-        prices: list of raw prices
+        prices: list of raw prices (typically last 5 days)
         key: optional data_dep or symbol for display unit conversion
     """
     if not prices or len(prices) < 2:
@@ -64,11 +67,21 @@ def format_trend(prices: List[float], key: str = None) -> str:
         if rule:
             divisor, unit_suffix = rule
             unit_suffix = f" {unit_suffix}"
+    
+    # 显示所有价格（5 天序列）
     display_prices = [p / divisor for p in prices]
-    arrow = "↑" if display_prices[-1] > display_prices[0] else ("↓" if display_prices[-1] < display_prices[0] else "→")
-    pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
     fmt = lambda p: f"{p:,.0f}" if abs(p) >= 100 else (f"{p:.1f}" if abs(p) >= 10 else f"{p:.2f}")
-    price_str = " → ".join(fmt(p) for p in display_prices)
+    price_str = " → ".join(fmt(p) for p in display_prices) + unit_suffix
+    
+    # 涨跌幅计算基于最近 2 天（昨日→今日）
+    if len(prices) >= 2:
+        yesterday = prices[-2]
+        today = prices[-1]
+        arrow = "↑" if today > yesterday else ("↓" if today < yesterday else "→")
+        pct = (today - yesterday) / yesterday * 100 if yesterday else 0
+    else:
+        arrow = "→"
+        pct = 0
     
     # 涨跌幅超过阈值时添加标记
     abs_pct = abs(pct)
@@ -84,7 +97,7 @@ def format_trend(prices: List[float], key: str = None) -> str:
     else:
         tag = ""
     
-    result = f"{price_str}{unit_suffix} {arrow} ({pct:+.1f}%)"
+    result = f"{price_str} {arrow} ({pct:+.1f}%)"
     if tag:
         result = f"{tag} {result}"
     return result
@@ -174,7 +187,7 @@ def format_chain_report_markdown(report: Dict[str, Any], price_context: List[Dic
 
     if price_context:
         lines.append("")
-        lines.append("📊 **近5日价格:**")
+        lines.append("📊 **昨日→今日价格:**")
         for item in price_context:
             label = item.get("label", "")
             trend = item.get("trend", "")
@@ -210,7 +223,7 @@ def format_recommendation_report(recommendation: Dict[str, Any], chain_name: str
 
     # Price context
     if price_context:
-        lines.append("📊 **近5日价格:**")
+        lines.append("📊 **昨日→今日价格:**")
         for item in price_context:
             p_label = item.get("label", "")
             trend = item.get("trend", "")

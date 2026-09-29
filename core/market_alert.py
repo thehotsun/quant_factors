@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, date, time as dt_time
+from datetime import datetime, date, time as dt_time, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -84,6 +84,14 @@ def _load_alert_config() -> dict:
 
 _alert_cfg = _load_alert_config()
 
+# ── 数据新鲜度配置 ────────────────────────────────────────
+# 数据不新时不发异动告警，并单独提醒（每个不新事件只提醒一次）
+_freshness_cfg = (_alert_cfg or {}).get("freshness", {}) or {}
+_FRESHNESS_ENABLED = bool(_freshness_cfg.get("enabled", True))
+_FRESHNESS_TOLERANCE_MIN = float(_freshness_cfg.get("tolerance_minutes", 20))
+_FRESHNESS_OPEN_GRACE_MIN = float(_freshness_cfg.get("open_grace_minutes", 3))
+_FRESHNESS_PREV_MAX_LAG_DAYS = int(_freshness_cfg.get("prev_max_lag_days", 5))
+
 # ── 分级告警配置 ──────────────────────────────────────────
 
 # 期货告警档位：(阈值%, emoji标签)
@@ -147,6 +155,112 @@ def _is_spot_trading_session() -> bool:
     return _in_sessions(_SPOT_SESSIONS)
 
 
+# ── 数据新鲜度判定 ────────────────────────────────────────
+# 期货接口的 time 只有 HHMMSS、没有日期，因此按「品种开市窗口」判断：
+# 仅当品种此刻本该在跳时，才要求其时间戳跟上；窗口内落后过多即判为不新。
+
+_FUTURES_DAY_SESSIONS = [
+    ("09:00", "11:30"),
+    ("13:30", "15:00"),
+]
+
+# 品种 → 夜盘时段（无夜盘为空列表）
+_FUTURES_NIGHT_SESSIONS: Dict[str, List[Tuple[str, str]]] = {
+    "CU0": [("21:00", "01:00")],
+    "AL0": [("21:00", "01:00")],
+    "AU0": [("21:00", "02:30")],
+    "AG0": [("21:00", "02:30")],
+    "SC0": [("21:00", "02:30")],
+    "RB0": [("21:00", "23:00")],
+    "I0":  [("21:00", "23:00")],
+    "M0":  [("21:00", "23:00")],
+    "Y0":  [("21:00", "23:00")],
+    "C0":  [("21:00", "23:00")],
+    "A0":  [("21:00", "23:00")],
+    "B0":  [("21:00", "23:00")],
+    "RM0": [("21:00", "23:00")],
+    "LH0": [],   # 生猪：无夜盘
+    "JD0": [],   # 鸡蛋：无夜盘
+}
+
+
+def _hm_to_min(hm: str) -> int:
+    h, m = hm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _now_in_window(now_min: int, start_min: int, end_min: int, grace_min: float = 0.0) -> bool:
+    """判断 now 是否落在 [start+grace, end] 内（支持跨日）。"""
+    start_g = start_min + grace_min
+    if start_min <= end_min:
+        return start_g <= now_min <= end_min
+    # 跨日，如 21:00-02:30
+    return now_min >= start_g or now_min <= end_min
+
+
+def _futures_symbol_is_live(symbol: str, now_min: int) -> bool:
+    """该品种此刻是否本应在跳（在日盘或夜盘窗口内）。"""
+    for start, end in _FUTURES_DAY_SESSIONS:
+        if _now_in_window(now_min, _hm_to_min(start), _hm_to_min(end), _FRESHNESS_OPEN_GRACE_MIN):
+            return True
+    for start, end in _FUTURES_NIGHT_SESSIONS.get(symbol, []):
+        if _now_in_window(now_min, _hm_to_min(start), _hm_to_min(end), _FRESHNESS_OPEN_GRACE_MIN):
+            return True
+    return False
+
+
+def _is_price_fresh(symbol: str, time_str: str, now: Optional[datetime] = None) -> Tuple[bool, str]:
+    """判断期货行情是否为新（返回 (是否新, 原因)）。
+
+    仅当品种处于开市窗口内时要求时间戳跟上；窗口外不作要求（视为新）。
+    """
+    if not _FRESHNESS_ENABLED:
+        return True, ""
+    now = now or datetime.now()
+    now_min = now.hour * 60 + now.minute
+    if not _futures_symbol_is_live(symbol, now_min):
+        return True, ""
+
+    ts = str(time_str or "").strip()
+    if len(ts) < 4 or not ts.isdigit():
+        return False, "行情时间缺失"
+    hh = int(ts[0:2])
+    mm = int(ts[2:4])
+    if hh > 23 or mm > 59:
+        return False, f"行情时间异常（{ts}）"
+    t_min = hh * 60 + mm
+    forward = (now_min - t_min) % 1440
+    backward = (t_min - now_min) % 1440
+    if min(forward, backward) <= _FRESHNESS_TOLERANCE_MIN:
+        return True, ""
+    return False, f"行情停在 {hh:02d}:{mm:02d}（落后约 {forward:.0f} 分钟）"
+
+
+def _latest_trading_day(d: Optional[date] = None) -> date:
+    """最近的一个交易日（含今天）。"""
+    from core.trading_calendar import is_trading_day
+    d = d or date.today()
+    for _ in range(15):
+        if is_trading_day(d):
+            return d
+        d -= timedelta(days=1)
+    return d
+
+
+def _spot_is_fresh(key: str, spot_info: Dict[str, Any]) -> Tuple[bool, str]:
+    """判断现货行情是否为新。"""
+    if not _FRESHNESS_ENABLED:
+        return True, ""
+    if key == "corn":
+        cur_date = spot_info.get("date")
+        if cur_date:
+            expected = _latest_trading_day().isoformat()
+            if str(cur_date) != expected:
+                return False, f"现货日期停在 {cur_date}（应为 {expected}）"
+    # 生猪现货接口无日期字段，只能弱判断（返回非空即视为新）
+    return True, ""
+
+
 # ── 告警状态管理（分级版）──────────────────────────────────
 
 def _load_alert_state() -> Dict[str, Any]:
@@ -198,7 +312,7 @@ def _is_recovery(pct: float, tiers: List[Tuple[float, str]]) -> bool:
 
 # ── 期货前一日收盘价 ──────────────────────────────────────
 
-def _get_prev_close() -> Dict[str, float]:
+def _get_prev_close() -> Dict[str, Dict[str, Any]]:
     result = {}
     data_dir = str(DATA_DIR)
     for symbol, parquet_name in _SYMBOL_TO_PARQUET.items():
@@ -206,7 +320,13 @@ def _get_prev_close() -> Dict[str, float]:
         try:
             df = pd.read_parquet(path)
             if 'close' in df.columns and not df.empty:
-                result[symbol] = float(df['close'].iloc[-1])
+                entry: Dict[str, Any] = {"close": float(df['close'].iloc[-1])}
+                if 'date' in df.columns:
+                    try:
+                        entry["date"] = str(pd.to_datetime(df['date'].iloc[-1]).date())
+                    except Exception:
+                        entry["date"] = ""
+                result[symbol] = entry
         except Exception:
             pass
     return result
@@ -237,7 +357,8 @@ def _fetch_realtime_prices() -> Dict[str, Dict[str, float]]:
                 settle = float(df['last_settle_price'].iloc[0]) if 'last_settle_price' in df.columns and df['last_settle_price'].iloc[0] else 0
                 last_close = float(df['last_close'].iloc[0]) if 'last_close' in df.columns and df['last_close'].iloc[0] else 0
                 prev = settle if settle > 0 else last_close
-                result[symbol] = {"price": price, "prev_close_api": prev}
+                raw_time = str(df['time'].iloc[0]) if 'time' in df.columns else ""
+                result[symbol] = {"price": price, "prev_close_api": prev, "time": raw_time}
         except Exception as e:
             logger.debug("获取 %s 实时行情失败: %s", symbol, e)
     return result
@@ -296,6 +417,7 @@ def _fetch_realtime_spot_prices() -> Dict[str, Dict[str, float]]:
                 result["corn"] = {
                     "price": float(cur_row['价格']) * factor,
                     "prev_close": float(prev_row['价格']) * factor,
+                    "date": str(cur_row['日期']),
                     "prev_date": str(prev_row['日期']),
                 }
     except Exception as e:
@@ -400,6 +522,7 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
     state = _load_alert_state()
     alerts_log = state.get("alerts", {})
     triggered = []  # 本轮触发的告警/恢复
+    stale_items = []  # 本轮因数据不新被跳过的品种
 
     # ── 期货异动检查 ──────────────────────────────────────
 
@@ -409,13 +532,33 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
     if realtime:
         for symbol, info in realtime.items():
             price = info["price"]
+            name = MONITORED_SYMBOLS.get(symbol, symbol)
+
+            # 数据新鲜度闸门：行情不是最新的 → 跳过告警，仅记录待提醒
+            fresh, reason = _is_price_fresh(symbol, info.get("time", ""))
+            if not fresh:
+                stale_items.append({"symbol": symbol, "name": name, "reason": reason})
+                continue
+
             # 优先用 API 昨结算价（与 current_price 同一合约，避免换月假涨跌）
-            prev = info.get("prev_close_api", 0) or prev_closes.get(symbol, 0)
+            prev_entry = prev_closes.get(symbol, {})
+            prev = info.get("prev_close_api", 0) or prev_entry.get("close", 0)
+            # 兜底前收若过旧，同样视为不新
+            if not info.get("prev_close_api") and prev_entry.get("date"):
+                try:
+                    lag = (date.today() - date.fromisoformat(prev_entry["date"])).days
+                    if lag > _FRESHNESS_PREV_MAX_LAG_DAYS:
+                        stale_items.append({
+                            "symbol": symbol, "name": name,
+                            "reason": f"前收数据停在 {prev_entry['date']}（{lag} 天前）",
+                        })
+                        continue
+                except ValueError:
+                    pass
             if not prev or prev <= 0:
                 continue
 
             pct = (price - prev) / prev * 100
-            name = MONITORED_SYMBOLS.get(symbol, symbol)
 
             _process_alert(
                 symbol=symbol, name=name, price=price, prev=prev,
@@ -435,6 +578,12 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
             src = _SPOT_SOURCES.get(key, {})
             name = src.get("name", key)
             current_price = spot_info["price"]
+
+            # 数据新鲜度闸门：现货当前价不是最新交易日的 → 跳过告警，仅记录待提醒
+            fresh, reason = _spot_is_fresh(key, spot_info)
+            if not fresh:
+                stale_items.append({"symbol": spot_key, "name": name, "reason": reason})
+                continue
 
             # 优先用 soozhu 自对比的 prev_close，其次用 spot_prev_close.json
             prev_price = spot_info.get("prev_close", 0)
@@ -477,6 +626,10 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
                 extra=alert_extra,
             )
 
+    # ── 数据不新提醒 ──────────────────────────────────────
+
+    _handle_stale_notifications(state, stale_items, push_fn)
+
     # ── 保存状态 ──────────────────────────────────────────
 
     state["alerts"] = alerts_log
@@ -487,6 +640,44 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
         logger.info("异动事件: %s", ", ".join(names))
 
     return triggered
+
+
+def _handle_stale_notifications(state: Dict[str, Any], stale_items: List[Dict[str, Any]],
+                                push_fn):
+    """数据不新提醒：每个不新事件只提醒一次，恢复后再不新才重新提醒。"""
+    stale_state: Dict[str, Any] = state.get("stale", {}) or {}
+    current = {it["symbol"]: it for it in stale_items}
+
+    # 已恢复（本轮不再不新）的品种移除，便于下次重新提醒
+    for sym in list(stale_state.keys()):
+        if sym not in current:
+            stale_state.pop(sym, None)
+
+    newly = []
+    for sym, it in current.items():
+        if sym not in stale_state:
+            stale_state[sym] = {
+                "name": it["name"],
+                "reason": it["reason"],
+                "time": datetime.now().strftime("%H:%M"),
+            }
+            newly.append(it)
+
+    state["stale"] = stale_state
+
+    if newly and push_fn:
+        lines = [f"- **{it['name']}**：{it['reason']}" for it in newly]
+        content = (
+            "⚠️ **数据不新，本轮异动告警已跳过**\n"
+            + "\n".join(lines)
+            + f"\n时间: {datetime.now().strftime('%H:%M')}"
+        )
+        try:
+            push_fn("⚠️ 数据不新，本轮告警已跳过", content)
+        except Exception as e:  # noqa: BLE001
+            logger.error("推送数据不新提醒失败: %s", e)
+        logger.warning("数据不新，跳过告警: %s",
+                       "; ".join(f"{it['name']}({it['reason']})" for it in newly))
 
 
 def _process_alert(symbol: str, name: str, price: float, prev: float,

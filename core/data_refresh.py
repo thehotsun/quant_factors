@@ -1,26 +1,36 @@
 """Scheduled data refresh jobs for quant_factors."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
-from datetime import date
+from datetime import date, datetime
+from io import StringIO
+from pathlib import Path
 from typing import Callable, Optional
 
 import akshare as ak
 import pandas as pd
+import requests
 
 from core.refresh_manifest import RefreshManifest
-from core.settings import REFRESH_MANIFEST_PATH
+from core.settings import DATA_DIR, REFRESH_MANIFEST_PATH
 
 logger = logging.getLogger(__name__)
 
+# 出站请求超时（秒）。FRED 曾出现连接挂起导致整个刷新任务永久阻塞。
+FRED_TIMEOUT = 30
+
 
 def fetch_fred_csv(series_id: str, name: str, start_date: str = "2020-01-01") -> Optional[pd.DataFrame]:
-    """从 FRED 直接下载 CSV 数据。"""
+    """从 FRED 直接下载 CSV 数据（带超时，避免连接挂起阻塞刷新任务）。"""
     try:
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
-        df = pd.read_csv(url)
+        url = (f"https://fred.stlouisfed.org/graph/fredgraph.csv"
+               f"?id={series_id}&cosd={start_date}")
+        resp = requests.get(url, timeout=FRED_TIMEOUT)
+        resp.raise_for_status()
+        df = pd.read_csv(StringIO(resp.text))
         df = df.rename(columns={"observation_date": "date"})
         df["date"] = pd.to_datetime(df["date"])
         df = df.sort_values("date")
@@ -357,3 +367,87 @@ def daily_data_refresh_foreign(data_bus):
         logger.info("外盘数据刷新完成")
     except Exception as e:
         logger.error("外盘数据刷新异常: %s", e)
+
+
+# ── 数据新鲜度监控 ──────────────────────────────────────────
+# (文件名, 展示名, 允许滞后天数)。滞后超过阈值即视为数据停摆。
+_FRESHNESS_SERIES = [
+    ("pork_futures", "生猪期货", 4),
+    ("egg_futures", "鸡蛋期货", 4),
+    ("soybean_meal_futures", "豆粕期货", 4),
+    ("corn_futures", "玉米期货", 4),
+    ("rapeseed_meal_futures", "菜粕期货", 4),
+    ("soybean_oil_futures", "豆油期货", 4),
+    ("crude_oil_futures", "原油期货", 4),
+    ("copper_futures", "铜期货", 4),
+    ("aluminum_futures", "铝期货", 4),
+    ("rebar_futures", "螺纹钢期货", 4),
+    ("gold_futures", "黄金期货", 4),
+    ("silver_futures", "白银期货", 4),
+    ("iron_ore_futures", "铁矿石期货", 4),
+    ("brent_oil", "布伦特原油", 6),
+    ("vix", "VIX恐慌指数", 6),
+]
+
+
+def check_data_freshness(push: bool = True, max_lag_days: Optional[int] = None):
+    """检查关键数据的新鲜度，滞后过多时告警。
+
+    用于发现“刷新任务静默停摆”：例如任务因网络挂起被跳过时，数据会一直
+    停留在旧日期而不报错。返回问题列表（为空表示全部正常）。
+    """
+    today = date.today()
+    problems = []
+
+    for fname, label, tol in _FRESHNESS_SERIES:
+        threshold = max_lag_days if max_lag_days is not None else tol
+        path = Path(DATA_DIR) / f"{fname}.parquet"
+        if not path.exists():
+            problems.append(f"{label}: 数据文件缺失")
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except Exception as e:  # noqa: BLE001
+            problems.append(f"{label}: 读取失败 {e}")
+            continue
+        if df is None or df.empty or "date" not in df.columns:
+            problems.append(f"{label}: 无有效数据")
+            continue
+        dates = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if dates.empty:
+            problems.append(f"{label}: 无有效日期")
+            continue
+        last = dates.max().date()
+        lag = (today - last).days
+        if lag > threshold:
+            problems.append(f"{label}: 最新 {last}（滞后 {lag} 天）")
+
+    # 刷新清单：上次成功结束距今过久，说明刷新任务停摆
+    try:
+        manifest_path = Path(REFRESH_MANIFEST_PATH)
+        if manifest_path.exists():
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            ended = payload.get("ended_at")
+            if ended:
+                lag_hours = (datetime.now() - datetime.fromisoformat(ended)).total_seconds() / 3600
+                if lag_hours > 48:
+                    problems.append(
+                        f"刷新任务: 上次结束于 {ended}（{lag_hours:.0f} 小时前）")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("刷新清单检查失败: %s", e)
+
+    if problems:
+        detail = "\n".join(f"- {p}" for p in problems)
+        logger.warning("数据新鲜度告警: %d 项异常\n%s", len(problems), detail)
+        if push:
+            try:
+                from core.push import get_push_manager
+                get_push_manager().send(
+                    "量化系统告警：数据过期",
+                    "⚠️ **数据新鲜度告警**\n" + detail,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.error("新鲜度告警推送失败: %s", e)
+    else:
+        logger.info("数据新鲜度检查通过（全部为最新）")
+    return problems

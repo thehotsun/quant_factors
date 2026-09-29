@@ -3,7 +3,8 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import logging
 from core.factor_runner import FactorRunner
-from core.data_refresh import daily_data_refresh, daily_data_refresh_foreign
+from core.data_refresh import daily_data_refresh, daily_data_refresh_foreign, check_data_freshness
+from core.net_guard import install_requests_timeout, run_with_timeout
 from core.scheduler import init_scheduler
 from core.composite_runner import run_composite_chain
 from core.ic_service import compute_daily_ic
@@ -33,6 +34,9 @@ def create_app(settings=None):
         配置好的 Flask app 实例。
     """
     app = Flask(__name__)
+
+    # 为所有 requests 调用注入默认超时，避免网绦卡死阻塞刷新任务
+    install_requests_timeout(30)
 
     # 加载配置（允许测试覆盖）
     data_dir = (settings or {}).get("data_dir", DATA_DIR)
@@ -82,19 +86,22 @@ def create_app(settings=None):
         if not is_trading_day():
             logger.info("今天 (%s) 非交易日，跳过国内数据刷新", datetime.now().date())
             return None
-        return daily_data_refresh(data_bus)
+        # 看门狗：即使发生卡死也在 60 分钟后释放调度槽位
+        return run_with_timeout(lambda: daily_data_refresh(data_bus), 3600, "daily_data_refresh")
 
     def _daily_data_refresh_foreign():
         if not is_trading_day():
             logger.info("今天 (%s) 非交易日，跳过外盘数据刷新", datetime.now().date())
             return None
-        return daily_data_refresh_foreign(data_bus)
+        return run_with_timeout(lambda: daily_data_refresh_foreign(data_bus), 1800, "daily_data_refresh_foreign")
 
     def _daily_ic_compute():
         if not is_trading_day():
             logger.info("今天 (%s) 非交易日，跳过IC计算", datetime.now().date())
             return None
-        return compute_daily_ic(chains_config, data_bus, ic_monitor, runner.ensure_imported)
+        return run_with_timeout(
+            lambda: compute_daily_ic(chains_config, data_bus, ic_monitor, runner.ensure_imported),
+            900, "daily_ic")
 
     def _daily_push():
         if not is_trading_day():
@@ -112,6 +119,9 @@ def create_app(settings=None):
         from core.market_alert import run_market_alert_check
         return run_market_alert_check()
 
+    def _data_freshness_check():
+        return check_data_freshness()
+
     # 仅在非测试模式下初始化 push 和 scheduler
     if not (settings or {}).get("skip_scheduler"):
         init_push_channels()
@@ -119,6 +129,7 @@ def create_app(settings=None):
             _daily_data_refresh, _daily_data_refresh_foreign,
             _daily_ic_compute, _daily_push,
             market_alert=_market_alert,
+            data_freshness_check=_data_freshness_check,
         )
 
     return app

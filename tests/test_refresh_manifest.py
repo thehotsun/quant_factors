@@ -68,6 +68,10 @@ class RefreshManifestTest(unittest.TestCase):
                  patch("download_history.fetch_tushare_futures", side_effect=fake_tushare), \
                  patch("download_history.fetch_pork_futures_far", side_effect=fake_pork_far), \
                  patch("download_history.fetch_pboc_social_financing", side_effect=fake_pboc), \
+                 patch("core.data_refresh.fetch_fred_csv", side_effect=lambda *a, **k: sample), \
+                 patch("core.data_refresh._refresh_spot_data"), \
+                 patch("core.data_refresh._save_spot_prev_close"), \
+                 patch("core.data_refresh._save_macro_pit_snapshots"), \
                  patch("core.data_refresh.ak.macro_china_pmi", return_value=sample), \
                  patch("core.data_refresh.ak.macro_china_cpi", return_value=sample), \
                  patch("core.data_refresh.ak.macro_china_money_supply", return_value=sample):

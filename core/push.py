@@ -218,21 +218,34 @@ def _get_close_prices(data_bus, data_dep: str) -> Optional[List[float]]:
 
 
 def _get_price_trend(data_bus, data_dep: str, days: int = 5) -> Optional[List[float]]:
-    """获取最近 N 天的收盘价列表。"""
+    """获取最近 N 天的收盘价列表（默认 5 天）。"""
     prices = _get_close_prices(data_bus, data_dep)
     if not prices or len(prices) < 2:
         return None
     return prices[-days:]
 
 
-def _format_trend(prices: list) -> str:
-    """格式化价格趋势，带方向箭头"""
+def _format_trend(prices: list, label: str = "") -> str:
+    """格式化价格趋势，带方向箭头。
+    
+    显示 5 天价格序列，但涨跌幅计算基于最近 2 天（昨日→今日）。
+    """
     if not prices or len(prices) < 2:
         return ""
-    arrow = "↑" if prices[-1] > prices[0] else ("↓" if prices[-1] < prices[0] else "→")
-    # 涨跌幅
-    pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
-    price_str = " → ".join(f"{p:.0f}" if abs(p) >= 100 else f"{p:.2f}" for p in prices)
+    # 显示所有价格（5 天序列）
+    price_str = " → ".join(
+        f"{p:.0f}" if abs(p) >= 100 else f"{p:.2f}" 
+        for p in prices
+    )
+    # 涨跌幅计算基于最近 2 天（昨日→今日）
+    if len(prices) >= 2:
+        yesterday = prices[-2]
+        today = prices[-1]
+        arrow = "↑" if today > yesterday else ("↓" if today < yesterday else "→")
+        pct = (today - yesterday) / yesterday * 100 if yesterday else 0
+    else:
+        arrow = "→"
+        pct = 0
     return f"{price_str} {arrow} ({pct:+.1f}%)"
 
 
@@ -292,6 +305,20 @@ def _format_price_position(data_bus, data_dep: str, lookback_days: int = 250) ->
         return f"📍 {period}：{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
     else:
         return f"📍 {period}：仅{cheaper_pct:.0f}%的交易日比现在更便宜（{label}）"
+
+
+def _format_daily_trend(prices: list) -> str:
+    """格式化单日价格趋势（昨日→今日），带方向箭头"""
+    if not prices or len(prices) < 2:
+        return ""
+    arrow = "↑" if prices[-1] > prices[0] else ("↓" if prices[-1] < prices[0] else "→")
+    # 涨跌幅
+    pct = (prices[-1] - prices[0]) / prices[0] * 100 if prices[0] else 0
+    # 只显示首尾价格（昨日→今日）
+    first_str = f"{prices[0]:.0f}" if abs(prices[0]) >= 100 else f"{prices[0]:.2f}"
+    last_str = f"{prices[-1]:.0f}" if abs(prices[-1]) >= 100 else f"{prices[-1]:.2f}"
+    price_str = f"{first_str} → {last_str}"
+    return f"{price_str} {arrow} ({pct:+.1f}%)"
 
 
 def format_signal_report(composite_results: Dict[str, Any], data_bus=None) -> str:
