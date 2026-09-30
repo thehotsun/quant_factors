@@ -69,8 +69,8 @@ class TestFuturesFreshness:
     def test_cross_midnight_stale(self):
         import core.market_alert as ma
         now = datetime(2026, 9, 30, 0, 10, 0)
-        # 23:30 距现在 40 分钟 > 20 分钟容差
-        ok, _ = ma._is_price_fresh("SC0", "233000", now=now)
+        # 23:00 距现在 70 分钟 > 60 分钟容差
+        ok, _ = ma._is_price_fresh("SC0", "230000", now=now)
         assert not ok
 
     def test_cross_midnight_fresh(self):
@@ -92,6 +92,32 @@ class TestFuturesFreshness:
         now = datetime(2026, 9, 30, 10, 0, 0)
         ok, reason = ma._is_price_fresh("SC0", "", now=now)
         assert not ok and reason
+
+    def test_ts_today_fresh(self):
+        import core.market_alert as ma
+        now = datetime(2026, 9, 30, 10, 0, 0)
+        ok, _ = ma._is_price_fresh("SC0", ts=datetime(2026, 9, 30, 9, 45), now=now)
+        assert ok
+
+    def test_ts_within_60min_tolerance(self):
+        import core.market_alert as ma
+        now = datetime(2026, 9, 30, 14, 30, 0)
+        # 迁后 21 分钟，在 60 分钟容差内 → 仍算新
+        ok, _ = ma._is_price_fresh("SC0", ts=datetime(2026, 9, 30, 14, 9), now=now)
+        assert ok
+
+    def test_ts_stale_beyond_tolerance(self):
+        import core.market_alert as ma
+        now = datetime(2026, 9, 30, 14, 30, 0)
+        ok, reason = ma._is_price_fresh("SC0", ts=datetime(2026, 9, 30, 13, 0), now=now)
+        assert not ok and reason
+
+    def test_ts_previous_day_stale(self):
+        import core.market_alert as ma
+        now = datetime(2026, 9, 30, 10, 0, 0)
+        ok, reason = ma._is_price_fresh("SC0", ts=datetime(2026, 9, 29, 10, 0), now=now)
+        assert not ok
+        assert "非今日" in reason
 
 
 # ── 现货新鲜度 ────────────────────────────────────────────

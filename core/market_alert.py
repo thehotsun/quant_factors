@@ -88,7 +88,7 @@ _alert_cfg = _load_alert_config()
 # 数据不新时不发异动告警，并单独提醒（每个不新事件只提醒一次）
 _freshness_cfg = (_alert_cfg or {}).get("freshness", {}) or {}
 _FRESHNESS_ENABLED = bool(_freshness_cfg.get("enabled", True))
-_FRESHNESS_TOLERANCE_MIN = float(_freshness_cfg.get("tolerance_minutes", 20))
+_FRESHNESS_TOLERANCE_MIN = float(_freshness_cfg.get("tolerance_minutes", 60))
 _FRESHNESS_OPEN_GRACE_MIN = float(_freshness_cfg.get("open_grace_minutes", 3))
 _FRESHNESS_PREV_MAX_LAG_DAYS = int(_freshness_cfg.get("prev_max_lag_days", 5))
 # 数据不新时是否单独提醒；false=静默跳过（仅记日志）
@@ -211,9 +211,11 @@ def _futures_symbol_is_live(symbol: str, now_min: int) -> bool:
     return False
 
 
-def _is_price_fresh(symbol: str, time_str: str, now: Optional[datetime] = None) -> Tuple[bool, str]:
+def _is_price_fresh(symbol: str, time_str: str = "", ts: Optional[datetime] = None,
+                    now: Optional[datetime] = None) -> Tuple[bool, str]:
     """判断期货行情是否为新（返回 (是否新, 原因)）。
 
+    优先用带日期的行情时间戳 ts（可识别隔日陈旊数据）；无 ts 时回退到 HHMMSS 比较。
     仅当品种处于开市窗口内时要求时间戳跟上；窗口外不作要求（视为新）。
     """
     if not _FRESHNESS_ENABLED:
@@ -223,13 +225,23 @@ def _is_price_fresh(symbol: str, time_str: str, now: Optional[datetime] = None) 
     if not _futures_symbol_is_live(symbol, now_min):
         return True, ""
 
-    ts = str(time_str or "").strip()
-    if len(ts) < 4 or not ts.isdigit():
+    # 有带日期的时间戳：直接判定「当日 + 落后分钟数」
+    if ts is not None:
+        if ts.date() != now.date():
+            return False, f"行情日期为 {ts.date().isoformat()}（非今日）"
+        lag = (now - ts).total_seconds() / 60.0
+        if lag > _FRESHNESS_TOLERANCE_MIN:
+            return False, f"行情停在 {ts.strftime('%H:%M')}（落后约 {lag:.0f} 分钟）"
+        return True, ""
+
+    # 回退：只有 HHMMSS（无日期）
+    ts_str = str(time_str or "").strip()
+    if len(ts_str) < 4 or not ts_str.isdigit():
         return False, "行情时间缺失"
-    hh = int(ts[0:2])
-    mm = int(ts[2:4])
+    hh = int(ts_str[0:2])
+    mm = int(ts_str[2:4])
     if hh > 23 or mm > 59:
-        return False, f"行情时间异常（{ts}）"
+        return False, f"行情时间异常（{ts_str}）"
     t_min = hh * 60 + mm
     forward = (now_min - t_min) % 1440
     backward = (t_min - now_min) % 1440
@@ -347,22 +359,18 @@ def _get_spot_prev_close() -> Dict[str, Dict[str, Any]]:
 
 # ── 期货实时行情获取 ──────────────────────────────────────
 
-def _fetch_realtime_prices() -> Dict[str, Dict[str, float]]:
-    import akshare as ak
-    result = {}
-    for symbol in MONITORED_SYMBOLS:
-        try:
-            df = ak.futures_zh_spot(symbol=symbol, market='CF', adjust='0')
-            if df is not None and not df.empty:
-                price = float(df['current_price'].iloc[0])
-                # 优先用昨结算价（更准确），其次昨收盘价，最后 0（由上游 fallback parquet）
-                settle = float(df['last_settle_price'].iloc[0]) if 'last_settle_price' in df.columns and df['last_settle_price'].iloc[0] else 0
-                last_close = float(df['last_close'].iloc[0]) if 'last_close' in df.columns and df['last_close'].iloc[0] else 0
-                prev = settle if settle > 0 else last_close
-                raw_time = str(df['time'].iloc[0]) if 'time' in df.columns else ""
-                result[symbol] = {"price": price, "prev_close_api": prev, "time": raw_time}
-        except Exception as e:
-            logger.debug("获取 %s 实时行情失败: %s", symbol, e)
+def _fetch_realtime_prices() -> Dict[str, Dict[str, Any]]:
+    """获取期货实时行情（多源：东财为主、新浪兜底），带日期时间戳。"""
+    from core.realtime_quote import fetch_futures_quotes
+    quotes = fetch_futures_quotes(list(MONITORED_SYMBOLS.keys()))
+    result: Dict[str, Dict[str, Any]] = {}
+    for symbol, q in quotes.items():
+        result[symbol] = {
+            "price": q["price"],
+            "prev_close_api": q.get("prev_settle", 0) or 0,
+            "ts": q.get("ts"),
+            "source": q.get("source", ""),
+        }
     return result
 
 
@@ -537,7 +545,7 @@ def check_market_alerts(push_fn=None) -> List[Dict[str, Any]]:
             name = MONITORED_SYMBOLS.get(symbol, symbol)
 
             # 数据新鲜度闸门：行情不是最新的 → 跳过告警，仅记录待提醒
-            fresh, reason = _is_price_fresh(symbol, info.get("time", ""))
+            fresh, reason = _is_price_fresh(symbol, ts=info.get("ts"))
             if not fresh:
                 stale_items.append({"symbol": symbol, "name": name, "reason": reason})
                 continue
