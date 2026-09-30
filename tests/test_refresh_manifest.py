@@ -69,6 +69,7 @@ class RefreshManifestTest(unittest.TestCase):
                  patch("download_history.fetch_pork_futures_far", side_effect=fake_pork_far), \
                  patch("download_history.fetch_pboc_social_financing", side_effect=fake_pboc), \
                  patch("core.data_refresh.fetch_fred_csv", side_effect=lambda *a, **k: sample), \
+                 patch("core.source_chain.resolve_dataset", side_effect=lambda key, **k: sample), \
                  patch("core.data_refresh._refresh_spot_data"), \
                  patch("core.data_refresh._save_spot_prev_close"), \
                  patch("core.data_refresh._save_macro_pit_snapshots"), \

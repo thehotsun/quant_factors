@@ -1,0 +1,45 @@
+# 数据源容灾配置（源链）
+# ------------------------------------------------------------------
+# 每个数据集配置一条「有序源链」。取数时按顺序尝试，取第一个
+#   「抓取成功 + 非空 + 新鲜（最新日期不超 max_lag_days）」的结果；
+# 全部失败 → 保留现有 parquet（不覆盖）并计入新鲜度告警。
+#
+# sources[].name 对应 core/source_chain.py 的抓取器注册表；
+# args 为该抓取器的关键字参数。
+# ------------------------------------------------------------------
+defaults:
+  max_lag_days: 6
+
+datasets:
+  brent_oil:
+    label: 布伦特原油
+    max_lag_days: 6
+    sources:
+      - {name: sina_foreign_hist, args: {symbol: OIL}}              # 新浪外盘 布伦特（主，本机可达）
+      - {name: fred, args: {series_id: DCOILBRENTEU, name: "布伦特原油(FRED)"}}  # FRED (EIA 现货)
+
+  usd_cny:
+    label: 美元人民币
+    max_lag_days: 6
+    sources:
+      - {name: fred, args: {series_id: DEXCHUS, name: "USD/CNY汇率"}}  # FRED 主
+      - {name: boc_usd_cny, args: {}}                                 # 中行牌价兜底
+
+  natural_gas_futures:
+    label: 天然气期货
+    max_lag_days: 6
+    sources:
+      - {name: sina_foreign_hist, args: {symbol: NG}}
+
+  cbot_soybean:
+    label: CBOT大豆
+    max_lag_days: 6
+    sources:
+      - {name: sina_foreign_hist, args: {symbol: S}}
+
+  eia_crude_stock:
+    label: EIA原油库存
+    max_lag_days: 14   # 周频，容差放宽
+    sources:
+      - {name: eia_crude_stock, args: {}}          # EIA 官网 XLS 主
+      - {name: akshare_eia_crude_rate, args: {}}   # akshare 财经日历兜底

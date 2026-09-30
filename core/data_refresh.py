@@ -277,7 +277,7 @@ def daily_data_refresh(data_bus):
             ("铂金期货", lambda: fetch_tushare_futures("PT.SHF", "铂金期货"), "platinum_futures"),
             # ("动力煤期货", lambda: fetch_tushare_futures("ZC.ZCE", "动力煤期货"), "thermal_coal_futures"),  # 已废弃：国家限价后失去市场化定价功能
             ("铁矿石期货", lambda: fetch_tushare_futures("I.DCE", "铁矿石期货"), "iron_ore_futures"),
-            ("美元人民币", lambda: fetch_fred_csv("DEXCHUS", "USD/CNY汇率"), "usd_cny"),
+            ("美元人民币", None, "usd_cny"),  # 源链容灾：FRED → 中行牌价（config/data_sources.yaml）
             ("中国PMI", lambda: ak.macro_china_pmi(), "pmi"),
             ("中国CPI", lambda: ak.macro_china_cpi(), "cpi"),
             ("中国M2", lambda: ak.macro_china_money_supply(), "m2"),
@@ -286,10 +286,12 @@ def daily_data_refresh(data_bus):
 
         failed = 0
         manifest = RefreshManifest(REFRESH_MANIFEST_PATH, "daily_domestic")
+        from core.source_chain import resolve_dataset as _resolve_dataset
         for name, fetcher, filename in tasks:
             df = None
             try:
-                df = retry_fetch(name, fetcher)
+                # fetcher 为 None 表示走源链容灾（config/data_sources.yaml）
+                df = retry_fetch(name, fetcher) if fetcher is not None else _resolve_dataset(filename)
                 wrote = save_parquet(df, filename)
                 if wrote:
                     manifest.record(name=name, filename=filename, status="success", df=df, wrote=True)
@@ -323,25 +325,49 @@ def daily_data_refresh(data_bus):
         logger.error("每日数据刷新异常: %s", e)
 
 
+# 走「源链」容灾的外盘数据集：{数据集键: 展示名}（见 config/data_sources.yaml）
+_CHAINED_FOREIGN = {
+    "natural_gas_futures": "天然气期货",
+    "cbot_soybean": "CBOT大豆",
+    "brent_oil": "布伦特原油",
+    "eia_crude_stock": "EIA原油库存",
+}
+
+
 def daily_data_refresh_foreign(data_bus):
     """定时任务：外盘数据刷新（次日06:00执行，确保外盘已收盘）。"""
     logger.info("开始外盘数据刷新...")
     try:
-        from download_history import save_parquet, fetch_eia_crude_stock, fetch_brent_oil
-
-        tasks = [
-            ("天然气期货", lambda: ak.futures_foreign_hist(symbol="NG"), "natural_gas_futures"),
-            ("CBOT大豆", fetch_cbot_soybean, "cbot_soybean"),
-            ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
-            ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
-            ("布伦特原油", lambda: first_valid_frame(fetch_brent_oil, ak.energy_oil_hist), "brent_oil"),
-            ("EIA原油库存", lambda: first_valid_frame(fetch_eia_crude_stock, ak.macro_usa_eia_crude_rate), "eia_crude_stock"),
-            ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
-        ]
+        from download_history import save_parquet
+        from core.source_chain import resolve_dataset
 
         failed = 0
         manifest = RefreshManifest(REFRESH_MANIFEST_PATH, "daily_foreign")
-        for name, fetcher, filename in tasks:
+
+        # ① 源链数据集：按配置的源链逐个尝试，命中即用；全失败/陈旧 → 保留旧数据
+        for dataset, label in _CHAINED_FOREIGN.items():
+            df = None
+            try:
+                df = resolve_dataset(dataset)
+                wrote = save_parquet(df, dataset)
+                if wrote:
+                    manifest.record(name=label, filename=dataset, status="success", df=df, wrote=True)
+                    logger.info("  %s 刷新成功", label)
+                else:
+                    manifest.record(name=label, filename=dataset, status="skipped", df=df, wrote=False)
+                    logger.warning("  %s 刷新跳过（所有源失败或数据陈旧，保留旧数据）", label)
+            except Exception as e:
+                failed += 1
+                manifest.record(name=label, filename=dataset, status="failed", df=df, error=str(e), wrote=False)
+                logger.warning("  %s 刷新失败: %s", label, e)
+
+        # ② 其余单源数据集（无备用源，保留原有重试）
+        single_tasks = [
+            ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
+            ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
+            ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
+        ]
+        for name, fetcher, filename in single_tasks:
             df = None
             try:
                 df = retry_fetch(name, fetcher)
@@ -357,10 +383,11 @@ def daily_data_refresh_foreign(data_bus):
                 manifest.record(name=name, filename=filename, status="failed", df=df, error=str(e), wrote=False)
                 logger.warning("  %s 刷新失败（已重试3次）: %s", name, e)
 
-        if failed == len(tasks):
+        total = len(_CHAINED_FOREIGN) + len(single_tasks)
+        if failed == total:
             logger.error("所有外盘数据源刷新失败！请检查网络连接")
         elif failed > 0:
-            logger.warning("外盘数据刷新部分失败: %d/%d", failed, len(tasks))
+            logger.warning("外盘数据刷新部分失败: %d/%d", failed, total)
 
         data_bus.invalidate()
         manifest.write()
@@ -386,6 +413,9 @@ _FRESHNESS_SERIES = [
     ("silver_futures", "白银期货", 4),
     ("iron_ore_futures", "铁矿石期货", 4),
     ("brent_oil", "布伦特原油", 6),
+    ("usd_cny", "美元人民币", 6),
+    ("natural_gas_futures", "天然气期货", 6),
+    ("cbot_soybean", "CBOT大豆", 6),
     ("vix", "VIX恐慌指数", 6),
 ]
 
@@ -435,6 +465,17 @@ def check_data_freshness(push: bool = True, max_lag_days: Optional[int] = None):
                         f"刷新任务: 上次结束于 {ended}（{lag_hours:.0f} 小时前）")
     except Exception as e:  # noqa: BLE001
         logger.warning("刷新清单检查失败: %s", e)
+
+    # 源链失败：所有源都不可用/不新鲜的数据集（已沿用旧数据）
+    try:
+        from core.source_chain import read_status
+        for key, st in (read_status().get("datasets") or {}).items():
+            if not st.get("ok", True):
+                label = st.get("label", key)
+                srcs = "、".join(s.get("source", "?") for s in st.get("sources", []))
+                problems.append(f"{label}: 所有源均失败（{srcs}），沿用旧数据")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("源链状态检查失败: %s", e)
 
     if problems:
         detail = "\n".join(f"- {p}" for p in problems)

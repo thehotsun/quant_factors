@@ -32,6 +32,28 @@ def freshness():
     return jsonify({"ok": not problems, "problems": problems})
 
 
+@system_bp.route('/sources', methods=['GET'])
+def sources():
+    """数据源容灾状态：源链配置 + 最近一次取数/探测结果（哪几个源能通）。
+
+    加 `?probe=1` 对所有源做一次实时探测（较慢，会联网）。
+    """
+    from flask import request
+    from core.source_chain import load_source_config, read_status, probe_all
+    cfg = load_source_config()
+    if str(request.args.get("probe", "")).lower() in ("1", "true", "yes"):
+        try:
+            probe_all()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("数据源探测失败: %s", e)
+    status = read_status()
+    return jsonify({
+        "config": cfg.get("datasets", {}),
+        "status": status.get("datasets", {}),
+        "updated_at": status.get("updated_at"),
+    })
+
+
 @system_bp.route('/chains', methods=['GET'])
 def list_chains():
     svc = _get_services()
