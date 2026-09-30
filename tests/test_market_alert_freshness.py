@@ -120,8 +120,9 @@ class TestSpotFreshness:
 # ── 不新提醒去重 ──────────────────────────────────────────
 
 class TestStaleNotifyOnce:
-    def test_notify_once_per_event(self):
+    def test_notify_once_per_event(self, monkeypatch):
         import core.market_alert as ma
+        monkeypatch.setattr(ma, "_FRESHNESS_NOTIFY_STALE", True)
         pushes = []
 
         def pf(title, content):
@@ -142,8 +143,9 @@ class TestStaleNotifyOnce:
         ma._handle_stale_notifications(state, items, pf)
         assert len(pushes) == 2
 
-    def test_multiple_symbols_combined(self):
+    def test_multiple_symbols_combined(self, monkeypatch):
         import core.market_alert as ma
+        monkeypatch.setattr(ma, "_FRESHNESS_NOTIFY_STALE", True)
         pushes = []
         state = {}
         items = [
@@ -153,3 +155,15 @@ class TestStaleNotifyOnce:
         ma._handle_stale_notifications(state, items, lambda t, c: pushes.append((t, c)))
         assert len(pushes) == 1
         assert "原油" in pushes[0][1] and "玉米现货" in pushes[0][1]
+
+    def test_silent_when_disabled(self, monkeypatch):
+        """notify_stale=false（默认）：数据不新时不推送，仅记日志。"""
+        import core.market_alert as ma
+        monkeypatch.setattr(ma, "_FRESHNESS_NOTIFY_STALE", False)
+        pushes = []
+        state = {}
+        items = [{"symbol": "SC0", "name": "原油", "reason": "行情停在 15:04"}]
+        ma._handle_stale_notifications(state, items, lambda t, c: pushes.append((t, c)))
+        assert pushes == []
+        # 状态仍被记录，便于后续开关/诊断
+        assert "SC0" in state.get("stale", {})

@@ -91,6 +91,8 @@ _FRESHNESS_ENABLED = bool(_freshness_cfg.get("enabled", True))
 _FRESHNESS_TOLERANCE_MIN = float(_freshness_cfg.get("tolerance_minutes", 20))
 _FRESHNESS_OPEN_GRACE_MIN = float(_freshness_cfg.get("open_grace_minutes", 3))
 _FRESHNESS_PREV_MAX_LAG_DAYS = int(_freshness_cfg.get("prev_max_lag_days", 5))
+# 数据不新时是否单独提醒；false=静默跳过（仅记日志）
+_FRESHNESS_NOTIFY_STALE = bool(_freshness_cfg.get("notify_stale", False))
 
 # ── 分级告警配置 ──────────────────────────────────────────
 
@@ -665,7 +667,12 @@ def _handle_stale_notifications(state: Dict[str, Any], stale_items: List[Dict[st
 
     state["stale"] = stale_state
 
-    if newly and push_fn:
+    if newly:
+        logger.warning("数据不新，跳过告警: %s",
+                       "; ".join(f"{it['name']}({it['reason']})" for it in newly))
+
+    # 数据不新是否提醒用户：默认不发（仅记日志）
+    if newly and push_fn and _FRESHNESS_NOTIFY_STALE:
         lines = [f"- **{it['name']}**：{it['reason']}" for it in newly]
         content = (
             "⚠️ **数据不新，本轮异动告警已跳过**\n"
@@ -676,8 +683,6 @@ def _handle_stale_notifications(state: Dict[str, Any], stale_items: List[Dict[st
             push_fn("⚠️ 数据不新，本轮告警已跳过", content)
         except Exception as e:  # noqa: BLE001
             logger.error("推送数据不新提醒失败: %s", e)
-        logger.warning("数据不新，跳过告警: %s",
-                       "; ".join(f"{it['name']}({it['reason']})" for it in newly))
 
 
 def _process_alert(symbol: str, name: str, price: float, prev: float,

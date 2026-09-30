@@ -60,9 +60,10 @@ spot_monitored:
 
 # ── 数据新鲜度闸门 ────────────────────────────────────────
 
-# 数据不新时：不发异动告警，并单独提醒（每个不新事件只提醒一次，恢复后再不新才重发）
+# 数据不新时：不发异动告警，静默跳过（仅记日志，不推送提醒）
 freshness:
   enabled: true
   tolerance_minutes: 20    # 开市窗口内，行情时间落后当前超过此值判为不新
   open_grace_minutes: 3    # 开市后缓冲期，期内不判定新鲜度，避免刚开盘误报
   prev_max_lag_days: 5     # parquet 兜底前收价超过此天数则视为不新
+  notify_stale: false      # 数据不新时是否单独提醒；false=静默跳过
