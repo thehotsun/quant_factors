@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -28,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 SOURCE_CONFIG_PATH = CONFIG_DIR / "data_sources.yaml"
 STATUS_PATH = DATA_DIR / "source_status.json"
+PROBE_STATE_PATH = DATA_DIR / "probe_state.json"
+PROBE_TIMEOUT = 180.0
 
 
 # ── 抓取器注册表（name -> callable(**args) -> DataFrame|None）────────────
@@ -271,3 +275,104 @@ def read_status(path: Optional[Path] = None) -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         logger.warning("读取 source_status.json 失败: %s", e)
     return {}
+
+
+# ── 后台异步探测（避免同步探测超过 gunicorn worker 超时被 500）───────────
+def run_with_timeout(fn: Callable, timeout: float):
+    """在 daemon 线程里跑 fn，超时抛 TimeoutError（卡死的线程不会阻塞退出）。"""
+    box: Dict[str, Any] = {}
+
+    def _run():
+        try:
+            box["result"] = fn()
+        except BaseException as e:  # noqa: BLE001
+            box["error"] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise TimeoutError(f"超时 {timeout:.0f}s")
+    if "error" in box:
+        raise box["error"]
+    return box.get("result")
+
+
+def _read_probe_state(path: Optional[Path] = None) -> Dict[str, Any]:
+    p = Path(path or PROBE_STATE_PATH)
+    try:
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("读取 probe_state.json 失败: %s", e)
+    return {}
+
+
+def _write_probe_state(state: Dict[str, Any], path: Optional[Path] = None) -> None:
+    p = Path(path or PROBE_STATE_PATH)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2, default=str),
+                       encoding="utf-8")
+        tmp.replace(p)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("写 probe_state.json 失败: %s", e)
+
+
+def _probe_is_running(st: Dict[str, Any], timeout: float = PROBE_TIMEOUT) -> bool:
+    """根据状态判断是否在跑；超过 timeout+30s 视为僵死（false）。"""
+    if not st.get("running"):
+        return False
+    started = st.get("started_at")
+    if not started:
+        return True
+    try:
+        elapsed = (datetime.now() - datetime.fromisoformat(started)).total_seconds()
+    except Exception:  # noqa: BLE001
+        return True
+    return elapsed <= timeout + 30
+
+
+def probe_state(path: Optional[Path] = None) -> Dict[str, Any]:
+    """返回探测状态（含 running/started_at/finished_at/error）。"""
+    st = _read_probe_state(path)
+    st["running"] = _probe_is_running(st)
+    return st
+
+
+def is_probe_running(path: Optional[Path] = None) -> bool:
+    """是否有后台探测在进行中。"""
+    return probe_state(path).get("running", False)
+
+
+def start_probe_background(timeout: float = PROBE_TIMEOUT,
+                          path: Optional[Path] = None) -> bool:
+    """启动一次后台探测（daemon 线程）。已在跑则返回 False。
+
+    探测结果由 probe_all 写入 source_status.json；本函数不阻塞请求线程。
+    """
+    if is_probe_running(path):
+        return False
+    started_at = datetime.now().isoformat(timespec="seconds")
+    _write_probe_state({
+        "running": True, "started_at": started_at, "finished_at": None,
+        "error": None, "pid": os.getpid(),
+    }, path)
+
+    def _worker():
+        err = None
+        try:
+            run_with_timeout(probe_all, timeout)
+        except Exception as e:  # noqa: BLE001
+            err = repr(e)[:200]
+            logger.warning("后台探测失败/超时: %s", e)
+        finally:
+            _write_probe_state({
+                "running": False, "started_at": started_at,
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+                "error": err, "pid": os.getpid(),
+            }, path)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return True

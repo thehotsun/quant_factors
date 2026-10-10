@@ -36,21 +36,37 @@ def freshness():
 def sources():
     """数据源容灾状态：源链配置 + 最近一次取数/探测结果（哪几个源能通）。
 
-    加 `?probe=1` 对所有源做一次实时探测（较慢，会联网）。
+    `?probe=1` 现在改为**触发一次后台探测**（不再同步阻塞，避免 worker 超时 500），
+    结果稍后写入 status；本接口永远快速返回，并带 `probing` 标志。
     """
     from flask import request
-    from core.source_chain import load_source_config, read_status, probe_all
+    from core.source_chain import (load_source_config, read_status,
+                                   start_probe_background, is_probe_running)
     cfg = load_source_config()
     if str(request.args.get("probe", "")).lower() in ("1", "true", "yes"):
         try:
-            probe_all()
+            start_probe_background()  # 后台触发，不阻塞
         except Exception as e:  # noqa: BLE001
-            logger.warning("数据源探测失败: %s", e)
+            logger.warning("触发后台探测失败: %s", e)
     status = read_status()
     return jsonify({
         "config": cfg.get("datasets", {}),
         "status": status.get("datasets", {}),
         "updated_at": status.get("updated_at"),
+        "probing": is_probe_running(),
+    })
+
+
+@system_bp.route('/sources/probe', methods=['POST'])
+def sources_probe():
+    """触发一次后台数据源探测（立即返回）。稍后 GET /sources 查看结果。"""
+    from core.source_chain import start_probe_background, is_probe_running
+    started = start_probe_background()
+    return jsonify({
+        "started": started,
+        "probing": is_probe_running(),
+        "message": "探测已开始，稍后 GET /sources 查看结果" if started
+                   else "已有探测在进行中",
     })
 
 

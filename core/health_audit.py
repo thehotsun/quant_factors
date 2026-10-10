@@ -32,25 +32,9 @@ def _audit_freshness() -> List[str]:
 
 
 def _run_with_timeout(fn, timeout: float):
-    """在 daemon 线程里跑 fn，超时抛 TimeoutError（不会因卡死的线程而阻塞退出）。"""
-    import threading
-
-    box: Dict[str, Any] = {}
-
-    def _run():
-        try:
-            box["result"] = fn()
-        except BaseException as e:  # noqa: BLE001
-            box["error"] = e
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout)
-    if t.is_alive():
-        raise TimeoutError(f"超时 {timeout:.0f}s")
-    if "error" in box:
-        raise box["error"]
-    return box.get("result")
+    """兼容旧引用：改用 source_chain 的统一超时封装。"""
+    from core.source_chain import run_with_timeout
+    return run_with_timeout(fn, timeout)
 
 
 def _audit_sources(probe: bool, timeout: float = 120.0) -> Dict[str, Any]:
