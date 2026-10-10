@@ -17,6 +17,7 @@ def init_scheduler(daily_data_refresh: Callable[[], None],
                    daily_push: Callable[[], None],
                    market_alert: Callable[[], None] = None,
                    data_freshness_check: Callable[[], None] = None,
+                   health_audit: Callable[[], None] = None,
                    lock_path: str = "/tmp/quant_factors_scheduler.lock") -> bool:
     """Start APScheduler once across gunicorn workers.
 
@@ -56,6 +57,10 @@ def init_scheduler(daily_data_refresh: Callable[[], None],
     if data_freshness_check:
         scheduler.add_job(data_freshness_check, "cron", hour=19, minute=0,
                           id="data_freshness")
+    # 数据获取健康巡检：每 7 天（周一 08:00，在外盘刷新之后）
+    if health_audit:
+        scheduler.add_job(health_audit, "cron", day_of_week="mon", hour=8, minute=0,
+                          id="health_audit")
     # 盘中异动告警：每 30 分钟检查一次（日盘 + 夜盘）
     if market_alert:
         scheduler.add_job(market_alert, "cron",
@@ -63,7 +68,7 @@ def init_scheduler(daily_data_refresh: Callable[[], None],
                          id="market_alert")
     scheduler.start()
     logger.info(
-        "APScheduler 已启动 (worker PID %d): 每日 18:00 国内数据刷新, 次日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送, 19:00 数据新鲜度巡检, 盘中异动每30分钟",
+        "APScheduler 已启动 (worker PID %d): 每日 18:00 国内数据刷新, 每日 06:00 外盘数据刷新, 18:30 IC 计算, 18:35 推送, 19:00 数据新鲜度巡检, 每周一 08:00 健康巡检, 盘中异动每30分钟",
         os.getpid(),
     )
     return True

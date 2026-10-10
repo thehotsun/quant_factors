@@ -90,9 +90,8 @@ def create_app(settings=None):
         return run_with_timeout(lambda: daily_data_refresh(data_bus), 3600, "daily_data_refresh")
 
     def _daily_data_refresh_foreign():
-        if not is_trading_day():
-            logger.info("今天 (%s) 非交易日，跳过外盘数据刷新", datetime.now().date())
-            return None
+        # 外盘数据（Brent/NG/CBOT/EIA/VIX）与 A 股交易日历无关：
+        # 周末/节假日外盘也可能有收盘数据，且源链自带新鲜度门，故不做交易日跳过。
         return run_with_timeout(lambda: daily_data_refresh_foreign(data_bus), 1800, "daily_data_refresh_foreign")
 
     def _daily_ic_compute():
@@ -122,6 +121,14 @@ def create_app(settings=None):
     def _data_freshness_check():
         return check_data_freshness()
 
+    def _health_audit():
+        try:
+            from core.health_audit import run_health_audit
+            return run_health_audit()
+        except Exception as e:  # noqa: BLE001
+            logger.error("健康巡检异常: %s", e)
+            return None
+
     # 仅在非测试模式下初始化 push 和 scheduler
     if not (settings or {}).get("skip_scheduler"):
         init_push_channels()
@@ -130,6 +137,7 @@ def create_app(settings=None):
             _daily_ic_compute, _daily_push,
             market_alert=_market_alert,
             data_freshness_check=_data_freshness_check,
+            health_audit=_health_audit,
         )
 
     return app

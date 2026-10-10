@@ -41,6 +41,23 @@ def _f_fred(series_id: str, name: Optional[str] = None, start_date: str = "2020-
     return fetch_fred_csv(series_id, name or series_id, start_date)
 
 
+def _f_fred_close(series_id: str, name: Optional[str] = None,
+                  start_date: str = "2020-01-01"):
+    """FRED 序列，列名归一化为 date/close（供下游按 close 读取）。"""
+    from core.data_refresh import fetch_fred_csv
+    df = fetch_fred_csv(series_id, name or series_id, start_date)
+    if df is None or df.empty:
+        return None
+    value_cols = [c for c in df.columns if c != "date"]
+    if not value_cols:
+        return None
+    df = df.rename(columns={value_cols[0]: "close"})
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
+    return df[["date", "close"]]
+
+
 def _f_boc_usd_cny():
     from data_sources.foreign import fetch_boc_usd_cny
     return fetch_boc_usd_cny()
@@ -73,6 +90,7 @@ def _f_akshare_qvix():
 FETCHERS: Dict[str, Callable[..., Optional[pd.DataFrame]]] = {
     "sina_foreign_hist": _f_sina_foreign_hist,
     "fred": _f_fred,
+    "fred_close": _f_fred_close,
     "boc_usd_cny": _f_boc_usd_cny,
     "eia_crude_stock": _f_eia_crude_stock,
     "akshare_eia_crude_rate": _f_akshare_eia_crude_rate,

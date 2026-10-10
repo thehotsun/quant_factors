@@ -331,6 +331,7 @@ _CHAINED_FOREIGN = {
     "cbot_soybean": "CBOT大豆",
     "brent_oil": "布伦特原油",
     "eia_crude_stock": "EIA原油库存",
+    "vix": "VIX恐慌指数",
 }
 
 
@@ -363,7 +364,6 @@ def daily_data_refresh_foreign(data_bus):
 
         # ② 其余单源数据集（无备用源，保留原有重试）
         single_tasks = [
-            ("VIX恐慌指数", lambda: ak.index_option_300etf_qvix(), "vix"),
             ("美国CPI", lambda: fetch_fred_csv("CPIAUCSL", "美国CPI"), "us_cpi"),
             ("TIPS收益率", lambda: fetch_fred_csv("DFII10", "TIPS收益率"), "tips_yield"),
         ]
@@ -420,7 +420,9 @@ _FRESHNESS_SERIES = [
 ]
 
 
-def check_data_freshness(push: bool = True, max_lag_days: Optional[int] = None):
+def check_data_freshness(push: bool = True, max_lag_days: Optional[int] = None,
+                         include_status: bool = True,
+                         include_manifest: bool = True):
     """检查关键数据的新鲜度，滞后过多时告警。
 
     用于发现“刷新任务静默停摆”：例如任务因网络挂起被跳过时，数据会一直
@@ -453,29 +455,31 @@ def check_data_freshness(push: bool = True, max_lag_days: Optional[int] = None):
             problems.append(f"{label}: 最新 {last}（滞后 {lag} 天）")
 
     # 刷新清单：上次成功结束距今过久，说明刷新任务停摆
-    try:
-        manifest_path = Path(REFRESH_MANIFEST_PATH)
-        if manifest_path.exists():
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-            ended = payload.get("ended_at")
-            if ended:
-                lag_hours = (datetime.now() - datetime.fromisoformat(ended)).total_seconds() / 3600
-                if lag_hours > 48:
-                    problems.append(
-                        f"刷新任务: 上次结束于 {ended}（{lag_hours:.0f} 小时前）")
-    except Exception as e:  # noqa: BLE001
-        logger.warning("刷新清单检查失败: %s", e)
+    if include_manifest:
+        try:
+            manifest_path = Path(REFRESH_MANIFEST_PATH)
+            if manifest_path.exists():
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                ended = payload.get("ended_at")
+                if ended:
+                    lag_hours = (datetime.now() - datetime.fromisoformat(ended)).total_seconds() / 3600
+                    if lag_hours > 48:
+                        problems.append(
+                            f"刷新任务: 上次结束于 {ended}（{lag_hours:.0f} 小时前）")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("刷新清单检查失败: %s", e)
 
     # 源链失败：所有源都不可用/不新鲜的数据集（已沿用旧数据）
-    try:
-        from core.source_chain import read_status
-        for key, st in (read_status().get("datasets") or {}).items():
-            if not st.get("ok", True):
-                label = st.get("label", key)
-                srcs = "、".join(s.get("source", "?") for s in st.get("sources", []))
-                problems.append(f"{label}: 所有源均失败（{srcs}），沿用旧数据")
-    except Exception as e:  # noqa: BLE001
-        logger.warning("源链状态检查失败: %s", e)
+    if include_status:
+        try:
+            from core.source_chain import read_status
+            for key, st in (read_status().get("datasets") or {}).items():
+                if not st.get("ok", True):
+                    label = st.get("label", key)
+                    srcs = "、".join(s.get("source", "?") for s in st.get("sources", []))
+                    problems.append(f"{label}: 所有源均失败（{srcs}），沿用旧数据")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("源链状态检查失败: %s", e)
 
     if problems:
         detail = "\n".join(f"- {p}" for p in problems)

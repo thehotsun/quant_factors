@@ -43,3 +43,12 @@ datasets:
     sources:
       - {name: eia_crude_stock, args: {}}          # EIA 官网 XLS 主
       - {name: akshare_eia_crude_rate, args: {}}   # akshare 财经日历兜底
+
+  vix:
+    label: VIX恐慌指数
+    max_lag_days: 6
+    sources:
+      # 主：真·美国 VIX（CBOE），FRED VIXCLS，列名归一化为 close
+      - {name: fred_close, args: {series_id: VIXCLS, name: "VIX(CBOE)"}}
+      # 兜底：中国 300ETF 隐含波动率（口径不同，仅在主源不可用时启用；注意量级差异）
+      - {name: akshare_qvix, args: {}}
