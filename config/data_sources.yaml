@@ -41,8 +41,8 @@ datasets:
     label: EIA原油库存
     max_lag_days: 14   # 周频，容差放宽
     sources:
-      - {name: eia_crude_stock, args: {}}          # EIA 官网 XLS 主
-      - {name: akshare_eia_crude_rate, args: {}}   # akshare 财经日历兜底
+      - {name: eia_crude_stock, args: {}}   # EIA dnav 免费 XLS 直链（无需 key）
+      # 原兜底 akshare_eia_crude_rate（金十数据镜像）已于 2025-09 起永久停更，2026-10-11 移除
 
   vix:
     label: VIX恐慌指数

@@ -72,20 +72,6 @@ def _f_eia_crude_stock():
     return fetch_eia_crude_stock()
 
 
-def _f_akshare_eia_crude_rate():
-    import akshare as ak
-    df = ak.macro_usa_eia_crude_rate()
-    if df is None or df.empty:
-        return None
-    df = df.rename(columns={"日期": "date", "今值": "close"})
-    if "date" not in df.columns or "close" not in df.columns:
-        return None
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df["close"] = pd.to_numeric(df["close"], errors="coerce")
-    df = df.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
-    return df[["date", "close"]]
-
-
 def _f_akshare_qvix():
     import akshare as ak
     return ak.index_option_300etf_qvix()
@@ -97,7 +83,6 @@ FETCHERS: Dict[str, Callable[..., Optional[pd.DataFrame]]] = {
     "fred_close": _f_fred_close,
     "boc_usd_cny": _f_boc_usd_cny,
     "eia_crude_stock": _f_eia_crude_stock,
-    "akshare_eia_crude_rate": _f_akshare_eia_crude_rate,
     "akshare_qvix": _f_akshare_qvix,
 }
 

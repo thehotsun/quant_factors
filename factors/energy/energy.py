@@ -87,8 +87,11 @@ class CrudeOilFactor(BaseFactor):
 
         eia_df = self.load("eia_crude_stock")
         if eia_df is not None and len(eia_df) >= 2:
-            col = 'value' if 'value' in eia_df.columns else 'stock'
-            if col in eia_df.columns:
+            # 库存列名兼容：新源输出 commercial_stocks_kb/total_stocks_kb，
+            # 历史/兜底数据可能是 value/stock。
+            col = next((c for c in ('commercial_stocks_kb', 'total_stocks_kb', 'value', 'stock')
+                        if c in eia_df.columns), None)
+            if col is not None:
                 latest = self._safe_float(eia_df.tail(1), -1, col=col)
                 prev = self._safe_float(eia_df.tail(2), -2, col=col)
                 if latest and prev:
